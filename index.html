@@ -8,49 +8,19 @@
 </head>
 <body>
   <div class="game-container">
-    <!-- МЕНЮ ВЫБОРА РЕЖИМА -->
-    <div class="menu-overlay" id="menuOverlay">
-      <div class="menu-content">
-        <h1>🚗 CarCrush</h1>
-        <p class="menu-subtitle">Выбери, во что играть!</p>
-        <div class="mode-cards">
-          <div class="mode-card" data-theme="cars" id="modeCars">
-            <div class="mode-preview">
-              <div class="mini-grid">
-                <img src="cars/sedan.svg" alt="car" class="mini-icon">
-                <img src="cars/suv.svg" alt="car" class="mini-icon">
-                <img src="cars/taxi.svg" alt="car" class="mini-icon">
-                <img src="cars/police.svg" alt="car" class="mini-icon">
-                <img src="cars/ambulance.svg" alt="car" class="mini-icon">
-                <img src="cars/firetruck.svg" alt="car" class="mini-icon">
-                <img src="cars/bus.svg" alt="car" class="mini-icon">
-              </div>
-            </div>
-            <h2>🚘 Нарисованные машинки</h2>
-            <p>Седаны, внедорожники, спецтехника</p>
-          </div>
-          <div class="mode-card" data-theme="brands" id="modeBrands">
-            <div class="mode-preview">
-              <div class="mini-grid">
-                <img src="brands/mercedes.svg" alt="brand" class="mini-icon">
-                <img src="brands/bmw.svg" alt="brand" class="mini-icon">
-                <img src="brands/audi.svg" alt="brand" class="mini-icon">
-                <img src="brands/volkswagen.svg" alt="brand" class="mini-icon">
-                <img src="brands/opel.svg" alt="brand" class="mini-icon">
-                <img src="brands/nissan.svg" alt="brand" class="mini-icon">
-                <img src="brands/toyota.svg" alt="brand" class="mini-icon">
-              </div>
-            </div>
-            <h2>🏷️ Марки автомобилей</h2>
-            <p>Mercedes, BMW, Audi, VW и другие</p>
-          </div>
-        </div>
-      </div>
-    </div>
-
     <!-- ИГРОВОЙ ИНТЕРФЕЙС -->
-    <header id="gameHeader" style="display:none;">
+    <header id="gameHeader">
       <h1>🚗 CarCrush</h1>
+      <div class="level-bar">
+        <span class="level-label">Уровень <strong id="levelNum">1</strong>:</span>
+        <span id="goalLabel">собери</span>
+        <img id="goalIcon" class="goal-icon" src="" alt="">
+        <span id="goalName">—</span>
+        <div class="progress-bg">
+          <div class="progress-fill" id="progressFill"></div>
+        </div>
+        <span class="progress-text" id="progressText">0/12</span>
+      </div>
       <div class="stats">
         <div class="stat">
           <span class="stat-label">Счёт</span>
@@ -67,24 +37,25 @@
       </div>
     </header>
 
-    <div class="board-wrapper" id="boardWrapper" style="display:none;">
+    <div class="board-wrapper">
       <canvas id="gameCanvas" width="480" height="480"></canvas>
-      <div class="overlay" id="gameOverOverlay">
+      <div class="overlay" id="levelOverlay">
         <div class="overlay-content">
-          <h2 id="overlayTitle">Игра окончена!</h2>
-          <p>Ваш счёт: <span id="finalScore">0</span></p>
-          <button id="restartBtn">🔄 Играть снова</button>
+          <h2 id="overlayTitle">🎉 Уровень пройден!</h2>
+          <div class="overlay-reward" id="rewardText">Отлично! Продолжай в том же духе!</div>
+          <div class="overlay-score">Счёт: <span id="finalScore">0</span></div>
+          <button id="overlayBtn">▶ Следующий уровень</button>
         </div>
       </div>
     </div>
 
-    <div class="controls" id="gameControls" style="display:none;">
+    <div class="controls">
       <button id="hintBtn">💡 Подсказка</button>
       <button id="shuffleBtn">🔀 Перемешать</button>
-      <button id="menuBtn">📋 Меню</button>
+      <button id="resetBtn">🔄 Новая игра</button>
     </div>
 
-    <div class="legend" id="gameLegend" style="display:none;"></div>
+    <div class="legend" id="gameLegend"></div>
   </div>
 
   <script src="game.js"></script>
