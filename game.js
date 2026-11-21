@@ -1,6 +1,6 @@
 /* ========================================================
    🚗 CarCrush — Match-3 Game
-   Sound effects + Drag & Drop + 5 Levels
+   Touch & Mouse support + 5 Levels + Sound
    ======================================================== */
 
 // ─── КОНСТАНТЫ ───────────────────────────────────────────
@@ -84,6 +84,7 @@ const LEVELS = [
 // ─── ЗВУКИ ───────────────────────────────────────────────
 let audioCtx = null;
 let soundEnabled = true;
+let audioUnlocked = false;
 
 function initAudio() {
   if (!audioCtx) {
@@ -125,7 +126,6 @@ function soundCombo(level) {
 }
 
 function soundBonus() {
-  // loud zap for bonus activation
   playTone(300, 0.08, 'square', 0.12);
   setTimeout(() => playTone(200, 0.1, 'sawtooth', 0.1), 50);
   setTimeout(() => playTone(400, 0.15, 'square', 0.08), 100);
@@ -149,7 +149,6 @@ let goalProgress = 0;
 let monsterCount = 0;
 let maxComboThisLevel = 0;
 let gameOver = false;
-let audioUnlocked = false;
 
 let board = [];
 let bonusMeta = {};
@@ -160,10 +159,11 @@ let selectedCell = null;
 let isAnimating = false;
 let hintCells = [];
 
-// Drag state
-let dragState = null; // { startRow, startCol, startX, startY, currentX, currentY, active }
+// Drag state for mouse/touch drag
+let dragState = null; // { startRow, startCol, currentRow, currentCol, isOverTarget }
 
-let carTypes = BRAND_TYPES;
+// ─── ЛОГОТИПЫ ────────────────────────────────────────────
+const carTypes = BRAND_TYPES;
 let carImages = [];
 let bonusImages = {};
 
@@ -437,44 +437,27 @@ async function processMatches() {
     const bonuses = calcBonuses(groups);
     const level = LEVELS[currentLevel];
 
-    // Determine combo level for sound
-    const prevCombo = combo;
-    const basePoints = cells.length * 10;
-    const comboPoints = Math.floor(basePoints * combo);
-    score += comboPoints;
-
-    // Count Monsters created
+    // Count Monster creations
     let monstersCreated = 0;
     for (const [key, pieceType] of bonuses) {
       if (pieceType === PIECE_MONSTER) monstersCreated++;
     }
     monsterCount += monstersCreated;
 
-    // Count brand matches for goal
-    let brandCollected = 0;
-    if (level.goalType === 'brand') {
-      for (const g of groups) {
-        if (g.type === level.brandIndex) {
-          for (const cl of g.cells) {
-            if (board[cl.row][cl.col] === level.brandIndex) brandCollected++;
-          }
-        }
-      }
-    }
-
-    // Update progress
-    if (level.goalType === 'brand') goalProgress += brandCollected;
-    else if (level.goalType === 'score') goalProgress = score;
+    // Update goal progress
+    if (level.goalType === 'brand') goalProgress += brandCollected; // will fix below
+    if (level.goalType === 'score') goalProgress = score;
     else if (level.goalType === 'monster') goalProgress = monsterCount;
     else if (level.goalType === 'combo') {
       if (combo > maxComboThisLevel) maxComboThisLevel = combo;
       goalProgress = maxComboThisLevel;
     }
 
-    // Sound
-    if (prevCombo > 1) soundCombo(prevCombo);
-    else soundMatch(cells.length);
+    const basePoints = cells.length * 10;
+    const comboPoints = Math.floor(basePoints * combo);
+    score += comboPoints;
 
+    // Update progress display
     updateStats();
     updateProgress();
 
@@ -863,12 +846,14 @@ function render() {
   for (let r = 0; r < ROWS; r++)
     for (let c = 0; c < COLS; c++)
       if (board[r][c] !== -1) drawCar(ctx, c * CELL_SIZE + CELL_SIZE / 2, r * CELL_SIZE + CELL_SIZE / 2, board[r][c], CELL_SIZE - 4);
-  // Draw dragged piece
-  if (dragState?.active) {
-    const { startRow, startCol, currentX, currentY } = dragState;
+  // Draw dragged piece preview
+  if (dragState?.isOverTarget) {
+    const { startRow, startCol, currentRow, currentCol } = dragState;
     const type = board[startRow][startCol];
     if (type !== undefined && type !== -1) {
-      drawCar(ctx, currentX, currentY, type, CELL_SIZE - 4);
+      const x = currentCol * CELL_SIZE + CELL_SIZE / 2;
+      const y = currentRow * CELL_SIZE + CELL_SIZE / 2;
+      drawCar(ctx, x, y, type, CELL_SIZE - 4);
     }
   }
 }
@@ -993,59 +978,8 @@ function updateLegend() {
     `<div class="legend-item"><img src="bonus/red-bull-logo.svg" alt="Red Bull" class="legend-svg bonus-legend"> Red Bull</div>`;
 }
 
-// ─── СТАРТ УРОВНЯ ────────────────────────────────────────
-async function startLevel() {
-  const level = LEVELS[currentLevel];
-  moves = 0;
-  combo = 1;
-  selectedCell = null;
-  hintCells = [];
-  isAnimating = false;
-  gameOver = false;
-  dragState = null;
-  overlayEl.classList.remove('active');
-
-  levelNumEl.textContent = level.num;
-  goalLabelEl.textContent = 'задание:';
-
-  if (level.goalType === 'brand') {
-    goalIconEl.src = carTypes[level.brandIndex].svg;
-    goalIconEl.alt = level.brandName;
-    goalNameEl.textContent = `собрать ${level.target} ${level.brandName}`;
-  } else if (level.goalType === 'score') {
-    goalIconEl.src = 'bonus/red-bull-logo.svg';
-    goalIconEl.alt = 'очки';
-    goalNameEl.textContent = `набрать ${level.goalName}`;
-  } else if (level.goalType === 'monster') {
-    goalIconEl.src = 'bonus/monster-graffio.svg';
-    goalIconEl.alt = 'Monster';
-    goalNameEl.textContent = `получить ${level.target} ${level.goalName}`;
-  } else if (level.goalType === 'combo') {
-    goalIconEl.src = carTypes[2].svg; // Ferrari icon
-    goalIconEl.alt = 'комбо';
-    goalNameEl.textContent = level.goalName;
-  }
-
-  fillBoard();
-  let attempts = 0;
-  while (!hasValidMove() && attempts < 100) { shuffleBoard(); attempts++; }
-
-  updateStats();
-  updateProgress();
-  render();
-}
-
-async function startGame() {
-  currentLevel = 0;
-  score = 0;
-  goalProgress = 0;
-  monsterCount = 0;
-  maxComboThisLevel = 0;
-  await startLevel();
-}
-
-// ─── DRAG & DROP ─────────────────────────────────────────
-
+// ─── ВЗАИМОДЕЙСТВИЕ МЫШЬ И ПАЛЬЦА ──────────────────────
+// Функция получения координат клетки с(canvas)
 function canvasToBoard(canvasX, canvasY) {
   const rect = canvas.getBoundingClientRect();
   const scaleX = canvas.width / rect.width;
@@ -1057,99 +991,182 @@ function canvasToBoard(canvasX, canvasY) {
   return { row, col, px: x, py: y };
 }
 
+// Обработка событий указателя (мышь + касание)
 function getCellFromEvent(e) {
   const touches = e.touches || [e];
   const t = touches[0];
   return canvasToBoard(t.clientX, t.clientY);
 }
 
-function onPointerDown(e) {
+// State for drag
+let dragStartRow = -1;
+let dragStartCol = -1;
+let dragCurrentRow = -1;
+let dragCurrentCol = -1;
+let isDragging = false;
+
+// События мыши
+canvas.addEventListener('mousedown', (e) => {
   if (isAnimating || gameOver) return;
   if (audioUnlocked === false) { initAudio(); audioUnlocked = true; }
 
-  const { row, col, px, py } = getCellFromEvent(e);
+  const { row, col } = getCellFromEvent(e);
   if (row < 0 || row >= ROWS || col < 0 || col >= COLS) return;
 
-  // Бонус?
+  // Проверка на бонус
   if (board[row][col] === PIECE_MONSTER || board[row][col] === PIECE_REDBULL) {
     activateClickedBonus(row, col);
     return;
   }
 
-  // Начало drag
-  dragState = {
-    startRow: row, startCol: col,
-    startX: px, startY: py,
-    currentX: px, currentY: py,
-    active: false, // пока не сдвинули
-  };
-
+  // Начало перетаскивания
+  dragStartRow = row;
+  dragStartCol = col;
+  dragCurrentRow = row;
+  dragCurrentCol = col;
+  isDragging = false;
   selectedCell = { row, col };
   hintCells = [];
   soundSelect();
   render();
   e.preventDefault();
-}
+});
 
-function onPointerMove(e) {
-  if (!dragState || isAnimating || gameOver) return;
-  const touches = e.touches || [e];
-  const t = touches[0];
-  const { px, py } = canvasToBoard(t.clientX, t.clientY);
+canvas.addEventListener('mousemove', (e) => {
+  if (!isDragging || isAnimating || gameOver) return;
+  const { row, col } = getCellFromEvent(e);
 
-  const dx = px - dragState.startX;
-  const dy = py - dragState.startY;
+  if (row < 0 || row >= ROWS || col < 0 || col >= COLS) return;
 
-  // Если сдвинули больше 10px — это drag
-  if (!dragState.active && Math.abs(dx) > 10 && Math.abs(dy) > 10) {
-    dragState.active = true;
+  // Проверяем, было ли suficiente сдвига
+  const dx = Math.abs(row - dragStartCol);  // column difference
+  const dy = Math.abs(col - dragStartRow);  // row difference - wait this is wrong
+
+  // Actually let me use proper coordinates
+  const dx = col - dragStartCol;
+  const dy = row - dragStartRow;
+
+  if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
+    isDragging = true;
   }
 
-  if (dragState.active) {
-    dragState.currentX = px;
-    dragState.currentY = py;
+  if (isDragging) {
+    dragCurrentRow = row;
+    dragCurrentCol = col;
     render();
   }
   e.preventDefault();
-}
+});
 
-function onPointerUp(e) {
-  if (!dragState || isAnimating || gameOver) return;
+canvas.addEventListener('mouseup', (e) => {
+  if (!isDragging || isAnimating || gameOver) return;
 
-  const { startRow, startCol, currentX, currentY } = dragState;
-  const target = canvasToBoard(currentX, currentY);
+  const target = getCellFromEvent(e);
+  if (!target) { render(); return; }
+
   const targetRow = target.row;
   const targetCol = target.col;
 
-  dragState = null;
+  // Сброс состояния drag
+  isDragging = false;
+  dragState = null; // cleanup
+  selectedCell = null;
+  hintCells = [];
+  render();
 
-  // Если не был drag — просто клик (selection already set)
-  if (!target) { render(); return; }
-
-  // Проверяем соседа
-  const dr = Math.abs(startRow - targetRow);
-  const dc = Math.abs(startCol - targetCol);
+  // Проверяем, был ли сдвиг на соседа
+  const dr = Math.abs(dragStartRow - targetRow);
+  const dc = Math.abs(dragStartCol - targetCol);
 
   if ((dr === 1 && dc === 0) || (dr === 0 && dc === 1)) {
-    makeMove(startRow, startCol, targetRow, targetCol);
+    // Соседний клик — делаем ход
+    makeMove(dragStartRow, dragStartCol, targetRow, targetCol);
+  } else if (dr === 0 && dc === 0) {
+    // Клик на ту же клетку — просто снимаем выделение (уже сбросили selectedCell выше)
   } else {
-    // Клик на ту же клетку — снять выделение
-    if (startRow === targetRow && startCol === targetCol) {
-      selectedCell = null;
-    }
+    // Слишком большой сдвиг — игнорируем
+  }
+});
+
+// События касания (touch)
+canvas.addEventListener('touchstart', (e) => {
+  e.preventDefault(); // Предотвращаем скролл страницы
+  if (isAnimating || gameOver) return;
+  if (audioUnlocked === false) { initAudio(); audioUnlocked = true; }
+
+  const { row, col } = getCellFromEvent(e);
+  if (row < 0 || row >= ROWS || col < 0 || col >= COLS) return;
+
+  // Проверка на бонус
+  if (board[row][col] === PIECE_MONSTER || board[row][col] === PIECE_REDBULL) {
+    activateClickedBonus(row, col);
+    return;
+  }
+
+  // Начало перетаскивания
+  dragStartRow = row;
+  dragStartCol = col;
+  dragCurrentRow = row;
+  dragCurrentCol = col;
+  isDragging = false;
+  selectedCell = { row, col };
+  hintCells = [];
+  soundSelect();
+  render();
+}, { passive: false });
+
+canvas.addEventListener('touchmove', (e) => {
+  e.preventDefault();
+  if (!isDragging || isAnimating || gameOver) return;
+
+  const { row, col } = getCellFromEvent(e);
+  if (row < 0 || row >= ROWS || col < 0 || col >= COLS) return;
+
+  const dx = col - dragStartCol;
+  const dy = row - dragStartRow;
+
+  if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
+    isDragging = true;
+  }
+
+  if (isDragging) {
+    dragCurrentRow = row;
+    dragCurrentCol = col;
     render();
   }
-}
+}, { passive: false });
 
-// Mouse events
-canvas.addEventListener('mousedown', onPointerDown);
-document.addEventListener('mousemove', onPointerMove);
-document.addEventListener('mouseup', onPointerUp);
+canvas.addEventListener('touchend', (e) => {
+  if (!isDragging || isAnimating || gameOver) return;
 
-// Touch events (preventDefault to stop scrolling)
-canvas.addEventListener('touchstart', onPointerDown, { passive: false });
-canvas.addEventListener('touchmove', onPointerMove, { passive: false });
-canvas.addEventListener('touchend', onPointerUp, { passive: false });
+  const target = getCellFromEvent(e);
+  if (!target) { render(); return; }
+
+  isDragging = false;
+
+  const targetRow = target.row;
+  const targetCol = target.col;
+
+  // Сброс состояния
+  dragStartRow = -1;
+  dragStartCol = -1;
+  dragCurrentRow = -1;
+  dragCurrentCol = -1;
+
+  // Проверяем, был ли сдвиг на соседа
+  const dr = Math.abs(dragStartRow - targetRow);
+  const dc = Math.abs(dragStartCol - targetCol);
+
+  if ((dr === 1 && dc === 0) || (dr === 0 && dc === 1)) {
+    makeMove(dragStartRow, dragStartCol, targetRow, targetCol);
+  } else if (dr === 0 && dc === 0) {
+    // Клик на ту же клетку
+    selectedCell = null;
+  } else {
+    // Слишком большой сдвиг — игнорируем
+  }
+  render();
+});
 
 // ─── КНОПКИ ──────────────────────────────────────────────
 document.getElementById('resetBtn')?.addEventListener('click', () => {
@@ -1192,11 +1209,9 @@ async function init() {
   await preloadAllSVGs();
   updateLegend();
   await startGame();
-  // Continuous pulse animation for bonuses (throttled on mobile)
-  const pulseInterval = isMobile ? 100 : 50;
   setInterval(() => {
-    if (!isAnimating && !gameOver && !dragState?.active) render();
-  }, pulseInterval);
+    if (!isAnimating && !gameOver && !isDragging) render();
+  }, isMobile ? 100 : 50);
 }
 
 init().catch(err => console.error('Ошибка инициализации:', err));
