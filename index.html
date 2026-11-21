@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CarCrush — три в ряд машинки</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="game-container">
+    <!-- МЕНЮ ВЫБОРА РЕЖИМА -->
+    <div class="menu-overlay" id="menuOverlay">
+      <div class="menu-content">
+        <h1>🚗 CarCrush</h1>
+        <p class="menu-subtitle">Выбери, во что играть!</p>
+        <div class="mode-cards">
+          <div class="mode-card" data-theme="cars" id="modeCars">
+            <div class="mode-preview">
+              <div class="mini-grid">
+                <img src="cars/sedan.svg" alt="car" class="mini-icon">
+                <img src="cars/suv.svg" alt="car" class="mini-icon">
+                <img src="cars/taxi.svg" alt="car" class="mini-icon">
+                <img src="cars/police.svg" alt="car" class="mini-icon">
+                <img src="cars/ambulance.svg" alt="car" class="mini-icon">
+                <img src="cars/firetruck.svg" alt="car" class="mini-icon">
+                <img src="cars/bus.svg" alt="car" class="mini-icon">
+              </div>
+            </div>
+            <h2>🚘 Нарисованные машинки</h2>
+            <p>Седаны, внедорожники, спецтехника</p>
+          </div>
+          <div class="mode-card" data-theme="brands" id="modeBrands">
+            <div class="mode-preview">
+              <div class="mini-grid">
+                <img src="brands/mercedes.svg" alt="brand" class="mini-icon">
+                <img src="brands/bmw.svg" alt="brand" class="mini-icon">
+                <img src="brands/audi.svg" alt="brand" class="mini-icon">
+                <img src="brands/volkswagen.svg" alt="brand" class="mini-icon">
+                <img src="brands/opel.svg" alt="brand" class="mini-icon">
+                <img src="brands/nissan.svg" alt="brand" class="mini-icon">
+                <img src="brands/toyota.svg" alt="brand" class="mini-icon">
+              </div>
+            </div>
+            <h2>🏷️ Марки автомобилей</h2>
+            <p>Mercedes, BMW, Audi, VW и другие</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ИГРОВОЙ ИНТЕРФЕЙС -->
+    <header id="gameHeader" style="display:none;">
+      <h1>🚗 CarCrush</h1>
+      <div class="stats">
+        <div class="stat">
+          <span class="stat-label">Счёт</span>
+          <span class="stat-value" id="score">0</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Ходы</span>
+          <span class="stat-value" id="moves">0</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Комбо</span>
+          <span class="stat-value" id="combo">x1</span>
+        </div>
+      </div>
+    </header>
+
+    <div class="board-wrapper" id="boardWrapper" style="display:none;">
+      <canvas id="gameCanvas" width="480" height="480"></canvas>
+      <div class="overlay" id="gameOverOverlay">
+        <div class="overlay-content">
+          <h2 id="overlayTitle">Игра окончена!</h2>
+          <p>Ваш счёт: <span id="finalScore">0</span></p>
+          <button id="restartBtn">🔄 Играть снова</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="controls" id="gameControls" style="display:none;">
+      <button id="hintBtn">💡 Подсказка</button>
+      <button id="shuffleBtn">🔀 Перемешать</button>
+      <button id="menuBtn">📋 Меню</button>
+    </div>
+
+    <div class="legend" id="gameLegend" style="display:none;"></div>
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>

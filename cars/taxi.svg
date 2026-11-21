@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 60" width="60" height="60">
+  <defs>
+    <radialGradient id="bg" cx="40%" cy="35%" r="55%">
+      <stop offset="0%" stop-color="#ffeaa7"/>
+      <stop offset="100%" stop-color="#fdcb6e"/>
+    </radialGradient>
+    <pattern id="checker" x="0" y="0" width="4" height="4" patternUnits="userSpaceOnUse">
+      <rect x="0" y="0" width="2" height="2" fill="#fff"/>
+      <rect x="2" y="0" width="2" height="2" fill="#2d3436"/>
+      <rect x="0" y="2" width="2" height="2" fill="#2d3436"/>
+      <rect x="2" y="2" width="2" height="2" fill="#fff"/>
+    </pattern>
+  </defs>
+  <circle cx="30" cy="30" r="26" fill="url(#bg)" stroke="rgba(255,255,255,0.15)" stroke-width="1.5"/>
+  <!-- Кузов -->
+  <rect x="10" y="28" width="40" height="15" rx="3" fill="#f1c40f" stroke="#d4a017" stroke-width="1"/>
+  <!-- Кабина -->
+  <rect x="14" y="21" width="20" height="10" rx="2" fill="#f39c12" stroke="#d4a017" stroke-width="0.8"/>
+  <!-- Заднее стекло -->
+  <rect x="16" y="23" width="7" height="6" rx="1" fill="#74b9ff" opacity="0.5"/>
+  <!-- Переднее стекло -->
+  <rect x="25" y="23" width="7" height="6" rx="1" fill="#74b9ff" opacity="0.5"/>
+  <!-- Фары -->
+  <rect x="44" y="30" width="4" height="3" rx="1" fill="#fff"/>
+  <!-- Задние фонари -->
+  <rect x="12" y="30" width="3" height="3" rx="1" fill="#e17055"/>
+  <!-- Шашечки -->
+  <rect x="26" y="29" width="8" height="5" rx="1" fill="url(#checker)"/>
+  <!-- Надпись TAXI -->
+  <text x="35" y="37" font-family="Arial,sans-serif" font-size="5" font-weight="bold" fill="#2d3436" text-anchor="middle">TAXI</text>
+  <!-- Колёса -->
+  <circle cx="18" cy="43" r="4" fill="#2d3436" stroke="#636e72" stroke-width="1"/>
+  <circle cx="42" cy="43" r="4" fill="#2d3436" stroke="#636e72" stroke-width="1"/>
+  <circle cx="18" cy="43" r="1.5" fill="#b2bec3"/>
+  <circle cx="42" cy="43" r="1.5" fill="#b2bec3"/>
+</svg>

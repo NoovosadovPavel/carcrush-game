@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 60" width="60" height="60">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#E8E8E8"/>
+      <stop offset="100%" stop-color="#B0B0B0"/>
+    </linearGradient>
+  </defs>
+  <circle cx="30" cy="30" r="26" fill="url(#bg)" stroke="#999" stroke-width="1"/>
+  <!-- Nissan logo: circle with line -->
+  <rect x="14" y="27" width="32" height="6" rx="2" fill="#C3002F"/>
+  <rect x="27" y="16" width="6" height="28" rx="2" fill="#C3002F"/>
+  <circle cx="30" cy="30" r="15" fill="none" stroke="#C3002F" stroke-width="1.5"/>
+</svg>

@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 60" width="60" height="60">
+  <defs>
+    <radialGradient id="bg" cx="40%" cy="35%" r="55%">
+      <stop offset="0%" stop-color="#74b9ff"/>
+      <stop offset="100%" stop-color="#0984e3"/>
+    </radialGradient>
+  </defs>
+  <circle cx="30" cy="30" r="26" fill="url(#bg)" stroke="rgba(255,255,255,0.15)" stroke-width="1.5"/>
+  <!-- Кузов автобуса -->
+  <rect x="7" y="24" width="46" height="20" rx="4" fill="#3498db" stroke="#2980b9" stroke-width="1"/>
+  <!-- Кабина -->
+  <rect x="10" y="17" width="14" height="10" rx="2" fill="#2980b9" stroke="#1f618d" stroke-width="0.8"/>
+  <!-- Стекло кабины -->
+  <rect x="12" y="19" width="10" height="6" rx="1" fill="#81ecec" opacity="0.5"/>
+  <!-- Окна -->
+  <rect x="26" y="18" width="6" height="7" rx="1" fill="#81ecec" opacity="0.5"/>
+  <rect x="34" y="18" width="6" height="7" rx="1" fill="#81ecec" opacity="0.5"/>
+  <rect x="42" y="18" width="6" height="7" rx="1" fill="#81ecec" opacity="0.5"/>
+  <!-- Фары -->
+  <rect x="47" y="28" width="3" height="4" rx="1" fill="#ffeaa7"/>
+  <!-- Задние фонари -->
+  <rect x="10" y="30" width="3" height="3" rx="1" fill="#e17055"/>
+  <!-- Полоса -->
+  <rect x="8" y="36" width="44" height="3" rx="0" fill="#1f618d"/>
+  <!-- Надпись -->
+  <text x="30" y="34.5" font-family="Arial,sans-serif" font-size="4" font-weight="bold" fill="#fff" text-anchor="middle">BUS</text>
+  <!-- Колёса -->
+  <circle cx="18" cy="44" r="5" fill="#2d3436" stroke="#636e72" stroke-width="1"/>
+  <circle cx="42" cy="44" r="5" fill="#2d3436" stroke="#636e72" stroke-width="1"/>
+  <circle cx="18" cy="44" r="2" fill="#b2bec3"/>
+  <circle cx="42" cy="44" r="2" fill="#b2bec3"/>
+</svg>

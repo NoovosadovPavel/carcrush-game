@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 60" width="60" height="60">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#E8E8E8"/>
+      <stop offset="100%" stop-color="#B0B0B0"/>
+    </linearGradient>
+  </defs>
+  <circle cx="30" cy="30" r="26" fill="url(#bg)" stroke="#999" stroke-width="1"/>
+  <!-- Toyota: 3 overlapping ovals simplified -->
+  <!-- Back right oval -->
+  <ellipse cx="37" cy="22" rx="9" ry="6" fill="#D40000" transform="rotate(-25 37 22)" opacity="0.9"/>
+  <!-- Back left oval -->
+  <ellipse cx="23" cy="22" rx="9" ry="6" fill="#D40000" transform="rotate(25 23 22)" opacity="0.9"/>
+  <!-- Central oval -->
+  <ellipse cx="30" cy="27" rx="7" ry="5" fill="#D40000" transform="rotate(-3 30 27)"/>
+  <!-- Text -->
+  <text x="30" y="42" font-family="Arial, sans-serif" font-size="5" font-weight="bold" fill="#D40000" text-anchor="middle">TOYOTA</text>
+</svg>

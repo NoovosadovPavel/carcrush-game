@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 60" width="60" height="60">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#E8E8E8"/>
+      <stop offset="100%" stop-color="#B0B0B0"/>
+    </linearGradient>
+  </defs>
+  <circle cx="30" cy="30" r="26" fill="url(#bg)" stroke="#999" stroke-width="1"/>
+  <!-- Opel lightning bolt in circle -->
+  <circle cx="30" cy="30" r="18" fill="#F5A800" stroke="#BADA55" stroke-width="0"/>
+  <circle cx="30" cy="30" r="16" fill="#F5A800" stroke="#E6A000" stroke-width="1.5"/>
+  <!-- Молния -->
+  <path d="M31,14 L21,31 L28,31 L25,46 L38,27 L31,27 L36,14 Z" fill="#fff" stroke="#E6A000" stroke-width="0.8"/>
+</svg>

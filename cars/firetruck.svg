@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 60" width="60" height="60">
+  <defs>
+    <radialGradient id="bg" cx="40%" cy="35%" r="55%">
+      <stop offset="0%" stop-color="#ff7675"/>
+      <stop offset="100%" stop-color="#d63031"/>
+    </radialGradient>
+  </defs>
+  <circle cx="30" cy="30" r="26" fill="url(#bg)" stroke="rgba(255,255,255,0.15)" stroke-width="1.5"/>
+  <!-- Кузов -->
+  <rect x="8" y="26" width="44" height="18" rx="3" fill="#e74c3c" stroke="#c0392b" stroke-width="1"/>
+  <!-- Кабина -->
+  <rect x="12" y="19" width="18" height="10" rx="2" fill="#d63031" stroke="#c0392b" stroke-width="0.8"/>
+  <!-- Стекло -->
+  <rect x="14" y="21" width="6" height="6" rx="1" fill="#74b9ff" opacity="0.6"/>
+  <rect x="22" y="21" width="6" height="6" rx="1" fill="#74b9ff" opacity="0.6"/>
+  <!-- Проблесковый маячок -->
+  <rect x="20" y="13" width="8" height="5" rx="2" fill="#ffeaa7"/>
+  <rect x="22" y="13" width="2" height="5" rx="0" fill="#e74c3c"/>
+  <rect x="24" y="13" width="2" height="5" rx="0" fill="#ffeaa7"/>
+  <!-- Лестница на крыше -->
+  <rect x="30" y="15" width="14" height="5" rx="1" fill="#c0392b"/>
+  <line x1="32" y1="15" x2="32" y2="20" stroke="#a93226" stroke-width="1"/>
+  <line x1="35" y1="15" x2="35" y2="20" stroke="#a93226" stroke-width="1"/>
+  <line x1="38" y1="15" x2="38" y2="20" stroke="#a93226" stroke-width="1"/>
+  <line x1="41" y1="15" x2="41" y2="20" stroke="#a93226" stroke-width="1"/>
+  <!-- Фары -->
+  <rect x="46" y="28" width="4" height="3" rx="1" fill="#ffeaa7"/>
+  <!-- Задние фонари -->
+  <rect x="10" y="28" width="3" height="3" rx="1" fill="#ff7675"/>
+  <!-- Полоса -->
+  <rect x="10" y="35" width="40" height="3" rx="0" fill="#ffeaa7" opacity="0.8"/>
+  <!-- Колёса -->
+  <circle cx="18" cy="44" r="5" fill="#2d3436" stroke="#636e72" stroke-width="1"/>
+  <circle cx="42" cy="44" r="5" fill="#2d3436" stroke="#636e72" stroke-width="1"/>
+  <circle cx="18" cy="44" r="2" fill="#b2bec3"/>
+  <circle cx="42" cy="44" r="2" fill="#b2bec3"/>
+</svg>

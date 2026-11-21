@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 60" width="60" height="60">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#E8E8E8"/>
+      <stop offset="100%" stop-color="#B0B0B0"/>
+    </linearGradient>
+  </defs>
+  <circle cx="30" cy="30" r="26" fill="url(#bg)" stroke="#999" stroke-width="1"/>
+  <!-- 4 rings of Audi -->
+  <circle cx="15" cy="30" r="8" fill="none" stroke="#111" stroke-width="3"/>
+  <circle cx="28" cy="30" r="8" fill="none" stroke="#111" stroke-width="3"/>
+  <circle cx="32" cy="30" r="8" fill="none" stroke="#111" stroke-width="3"/>
+  <circle cx="45" cy="30" r="8" fill="none" stroke="#111" stroke-width="3"/>
+</svg>

@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 60" width="60" height="60">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#E8E8E8"/>
+      <stop offset="100%" stop-color="#B0B0B0"/>
+    </linearGradient>
+  </defs>
+  <circle cx="30" cy="30" r="26" fill="url(#bg)" stroke="#999" stroke-width="1"/>
+  <!-- VW logo -->
+  <circle cx="30" cy="30" r="17" fill="#111" stroke="#111" stroke-width="2"/>
+  <!-- VW letters in circle -->
+  <text x="30" y="35" font-family="Arial, sans-serif" font-size="10" font-weight="bold" fill="#fff" text-anchor="middle">VW</text>
+  <!-- Внутреннее кольцо -->
+  <circle cx="30" cy="30" r="14" fill="none" stroke="#fff" stroke-width="1"/>
+</svg>
