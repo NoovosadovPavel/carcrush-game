@@ -1,22 +1,26 @@
 /* ========================================================
-   🚗 CarCrush — Match-3 Game
+   🚗 CarCrush — Match-3 Game + Bonus Pieces
    ======================================================== */
 
-// ─── НАСТРОЙКИ ───────────────────────────────────────────
+// ─── КОНСТАНТЫ ───────────────────────────────────────────
 const ROWS = 8;
 const COLS = 8;
 const CELL_SIZE = 60;
 const MIN_MATCH = 3;
-const DROP_DURATION = 250;
+
+const PIECE_BASE     = 0;   // 0-6 — обычные фишки
+const PIECE_MONSTER  = 7;   // Monster Grafio
+const PIECE_REDBULL  = 8;   // Red Bull
+const PIECE_COUNT    = 7;   // 7 типов обычных фишек
+
+const DROP_DURATION = 200;
 const FALL_DURATION = 350;
-const SWAP_DURATION = 150;
+const SWAP_DURATION = 130;
 
 // ─── ТЕМЫ ────────────────────────────────────────────────
-
 const THEMES = {
   cars: {
-    id: 'cars',
-    name: 'Нарисованные машинки',
+    id: 'cars', name: 'Нарисованные машинки',
     types: [
       { key: 'sedan',      name: 'Седан',      fill: '#e74c3c', light: '#ff6b6b', svg: 'cars/sedan.svg' },
       { key: 'suv',        name: 'Внедорожник', fill: '#27ae60', light: '#55efc4', svg: 'cars/suv.svg' },
@@ -28,27 +32,32 @@ const THEMES = {
     ],
   },
   brands: {
-    id: 'brands',
-    name: 'Марки автомобилей',
+    id: 'brands', name: 'Марки автомобилей',
     types: [
-      { key: 'mercedes',    name: 'Mercedes',   fill: '#0055A5', light: '#7FBAFF', svg: 'brands/mercedes.svg' },
-      { key: 'bmw',         name: 'BMW',        fill: '#0066B1', light: '#6AB5FF', svg: 'brands/bmw.svg' },
-      { key: 'audi',        name: 'Audi',       fill: '#111111', light: '#666666', svg: 'brands/audi.svg' },
-      { key: 'volkswagen',  name: 'VW',         fill: '#1A1A1A', light: '#555555', svg: 'brands/volkswagen.svg' },
-      { key: 'opel',        name: 'Opel',       fill: '#E6A000', light: '#FFD966', svg: 'brands/opel.svg' },
-      { key: 'nissan',      name: 'Nissan',     fill: '#C3002F', light: '#FF6B8A', svg: 'brands/nissan.svg' },
-      { key: 'toyota',      name: 'Toyota',     fill: '#D40000', light: '#FF6B6B', svg: 'brands/toyota.svg' },
+      { key: 'mercedes',  name: 'Mercedes',  fill: '#0055A5', light: '#7FBAFF', svg: 'logos/mercedes-benz-9.svg' },
+      { key: 'bmw',       name: 'BMW',       fill: '#0066B1', light: '#6AB5FF', svg: 'logos/bmw-7.svg' },
+      { key: 'ferrari',   name: 'Ferrari',   fill: '#DC0000', light: '#FF6B6B', svg: 'logos/ferrari-ges.svg' },
+      { key: 'ford',      name: 'Ford',      fill: '#003478', light: '#6B9CFF', svg: 'logos/ford-8.svg' },
+      { key: 'nissan',    name: 'Nissan',    fill: '#C3002F', light: '#FF6B8A', svg: 'logos/nissan-6.svg' },
+      { key: 'porsche',   name: 'Porsche',   fill: '#111111', light: '#666666', svg: 'logos/porsche-6.svg' },
+      { key: 'volkswagen',name: 'VW',        fill: '#1A1A1A', light: '#555555', svg: 'logos/volkswagen-9.svg' },
     ],
   },
 };
 
-let currentTheme = null;        // текущая тема ('cars' | 'brands')
-let carTypes = [];              // CAR_TYPES.types текущей темы
-let carImages = [];             // Image-объекты для текущей темы
-let typesCount = 0;
+const BONUS_SVGS = {
+  7: 'bonus/monster-graffio.svg',
+  8: 'bonus/red-bull-logo.svg',
+};
+
+let currentTheme = null;
+let carTypes = [];
+let carImages = [];
+let bonusImages = {};
 
 // ─── СОСТОЯНИЕ ИГРЫ ──────────────────────────────────────
 let board = [];
+let bonusMeta = {};      // "row,col" → { dir: 'h'|'v' } для Monster
 let score = 0;
 let moves = 0;
 let combo = 1;
@@ -56,6 +65,7 @@ let selectedCell = null;
 let isAnimating = false;
 let isGameOver = false;
 let hintCells = [];
+let bonusAnim = null;    // текущая анимация бонуса: { cells, type, time }
 
 // DOM
 const canvas = document.getElementById('gameCanvas');
@@ -67,22 +77,31 @@ const overlay    = document.getElementById('gameOverOverlay');
 const finalScore  = document.getElementById('finalScore');
 const menuOverlay = document.getElementById('menuOverlay');
 
-// ─── ЗАГРУЗКА SVG ДЛЯ ТЕМЫ ──────────────────────────────
+// ─── ЗАГРУЗКА ────────────────────────────────────────────
 
 function preloadThemeSVGs(themeId) {
   const theme = THEMES[themeId];
   if (!theme) return Promise.resolve();
-
   carTypes = theme.types;
-  typesCount = carTypes.length;
   carImages = [];
-
   return Promise.all(carTypes.map((t, idx) => {
     return new Promise(resolve => {
       const img = new Image();
       img.onload = () => { carImages[idx] = img; resolve(); };
-      img.onerror = () => { resolve(); };
+      img.onerror = resolve;
       img.src = t.svg;
+    });
+  }));
+}
+
+function preloadBonusSVGs() {
+  bonusImages = {};
+  return Promise.all(Object.entries(BONUS_SVGS).map(([type, path]) => {
+    return new Promise(resolve => {
+      const img = new Image();
+      img.onload = () => { bonusImages[type] = img; resolve(); };
+      img.onerror = resolve;
+      img.src = path;
     });
   }));
 }
@@ -95,18 +114,14 @@ function createEmptyBoard() {
 
 function fillBoard() {
   board = createEmptyBoard();
-  for (let r = 0; r < ROWS; r++) {
+  bonusMeta = {};
+  for (let r = 0; r < ROWS; r++)
     for (let c = 0; c < COLS; c++) {
-      let type;
-      let attempts = 0;
-      do {
-        type = Math.floor(Math.random() * typesCount);
-        attempts++;
-        if (attempts > typesCount * 2) break;
-      } while (wouldMatch(r, c, type));
+      let type, attempts = 0;
+      do { type = Math.floor(Math.random() * PIECE_COUNT); attempts++; }
+      while (attempts < 20 && wouldMatch(r, c, type));
       board[r][c] = type;
     }
-  }
 }
 
 function wouldMatch(row, col, type) {
@@ -117,87 +132,166 @@ function wouldMatch(row, col, type) {
 
 // ─── ПОИСК СОВПАДЕНИЙ ────────────────────────────────────
 
-function findMatches() {
+/** Возвращает { matched: Set, groups: [{cells, type, direction, size}] } */
+function findMatchesWithDetails() {
   const matched = new Set();
+  const groups = [];
 
+  // Горизонталь
   for (let r = 0; r < ROWS; r++) {
     let count = 1;
-    for (let c = 1; c < COLS; c++) {
-      if (board[r][c] === board[r][c - 1] && board[r][c] !== -1) count++;
+    for (let c = 1; c <= COLS; c++) {
+      const same = c < COLS && board[r][c] === board[r][c - 1] && board[r][c] >= 0 && board[r][c] < PIECE_COUNT;
+      if (same) { count++; }
       else {
-        if (count >= MIN_MATCH) for (let k = 0; k < count; k++) matched.add(`${r},${c - 1 - k}`);
+        if (count >= MIN_MATCH && board[r][c - 1] >= 0 && board[r][c - 1] < PIECE_COUNT) {
+          const cells = [];
+          for (let k = 0; k < count; k++) {
+            const cc = c - 1 - k;
+            cells.push({ row: r, col: cc });
+            matched.add(`${r},${cc}`);
+          }
+          groups.push({ cells, type: board[r][c - 1], direction: 'h', size: count });
+        }
         count = 1;
       }
     }
-    if (count >= MIN_MATCH) for (let k = 0; k < count; k++) matched.add(`${r},${COLS - 1 - k}`);
   }
 
+  // Вертикаль
   for (let c = 0; c < COLS; c++) {
     let count = 1;
-    for (let r = 1; r < ROWS; r++) {
-      if (board[r][c] === board[r - 1][c] && board[r][c] !== -1) count++;
+    for (let r = 1; r <= ROWS; r++) {
+      const same = r < ROWS && board[r][c] === board[r - 1][c] && board[r][c] >= 0 && board[r][c] < PIECE_COUNT;
+      if (same) { count++; }
       else {
-        if (count >= MIN_MATCH) for (let k = 0; k < count; k++) matched.add(`${r - 1 - k},${c}`);
+        if (count >= MIN_MATCH && board[r - 1][c] >= 0 && board[r - 1][c] < PIECE_COUNT) {
+          const cells = [];
+          for (let k = 0; k < count; k++) {
+            const rr = r - 1 - k;
+            cells.push({ row: rr, col: c });
+            matched.add(`${rr},${c}`);
+          }
+          groups.push({ cells, type: board[r - 1][c], direction: 'v', size: count });
+        }
         count = 1;
       }
     }
-    if (count >= MIN_MATCH) for (let k = 0; k < count; k++) matched.add(`${ROWS - 1 - k},${c}`);
   }
 
-  return matched;
+  return { matched, groups };
 }
 
 function parseMatches(matchedSet) {
-  return [...matchedSet].map(key => {
-    const [r, c] = key.split(',').map(Number);
+  return [...matchedSet].map(k => {
+    const [r, c] = k.split(',').map(Number);
     return { row: r, col: c };
   });
 }
+
+// ─── БОНУСНЫЕ ФИШКИ ──────────────────────────────────────
+
+/** Определяет, куда ставить бонусы по результатам групп */
+function calcBonuses(groups) {
+  const bonusMap = new Map(); // "row,col" → pieceType
+
+  for (const g of groups) {
+    if (g.size >= 5) {
+      const idx = Math.floor(g.cells.length / 2);
+      const c = g.cells[idx];
+      bonusMap.set(`${c.row},${c.col}`, PIECE_REDBULL);
+    } else if (g.size === 4) {
+      const idx = Math.floor(g.cells.length / 2);
+      const c = g.cells[idx];
+      const key = `${c.row},${c.col}`;
+      // RedBull приоритетнее
+      if (!bonusMap.has(key)) {
+        bonusMap.set(key, PIECE_MONSTER);
+      }
+    }
+  }
+  return bonusMap;
+}
+
+/** Применить бонус — сжечь ряд/столбец/3×3 */
+function activateBonus(row, col) {
+  const type = board[row][col];
+  if (type !== PIECE_MONSTER && type !== PIECE_REDBULL) return [];
+
+  if (type === PIECE_MONSTER) {
+    const meta = bonusMeta[`${row},${col}`];
+    const dir = meta ? meta.dir : 'h';
+    const cleared = [];
+    if (dir === 'h') {
+      // Сжечь ряд
+      for (let c = 0; c < COLS; c++) {
+        if (board[row][c] !== -1) cleared.push({ row, col: c });
+      }
+      bonusAnim = { cells: cleared, type: 'row', center: { row, col }, time: Date.now() };
+    } else {
+      // Сжечь столбец
+      for (let r = 0; r < ROWS; r++) {
+        if (board[r][col] !== -1) cleared.push({ row: r, col });
+      }
+      bonusAnim = { cells: cleared, type: 'col', center: { row, col }, time: Date.now() };
+    }
+    return cleared;
+  }
+
+  if (type === PIECE_REDBULL) {
+    const minR = Math.max(0, row - 1);
+    const maxR = Math.min(ROWS - 1, row + 1);
+    const minC = Math.max(0, col - 1);
+    const maxC = Math.min(COLS - 1, col + 1);
+    const cleared = [];
+    for (let r = minR; r <= maxR; r++)
+      for (let c = minC; c <= maxC; c++)
+        if (board[r][c] !== -1) cleared.push({ row: r, col: c });
+    bonusAnim = { cells: cleared, type: 'bomb', center: { row, col }, time: Date.now() };
+    return cleared;
+  }
+
+  return [];
+}
+
+/** Флаг — бонусная ли фишка */
+function isBonus(type) { return type >= PIECE_MONSTER; }
 
 // ─── ГРАВИТАЦИЯ ──────────────────────────────────────────
 
 function applyGravity() {
   const drops = [];
-
   for (let c = 0; c < COLS; c++) {
     const cells = [];
-    for (let r = ROWS - 1; r >= 0; r--) {
+    for (let r = ROWS - 1; r >= 0; r--)
       if (board[r][c] !== -1) cells.push({ row: r, type: board[r][c] });
-    }
-
     const emptyCount = ROWS - cells.length;
     if (emptyCount === 0) continue;
-
     for (let i = 0; i < cells.length; i++) {
       const targetRow = ROWS - 1 - i;
       const cell = cells[i];
       if (cell.row !== targetRow) drops.push({ col: c, type: cell.type, fromRow: cell.row, toRow: targetRow });
       board[targetRow][c] = cell.type;
     }
-
     for (let r = 0; r < emptyCount; r++) board[r][c] = -1;
   }
-
   return drops;
 }
 
 function generateNewCars() {
   const newCars = [];
-
   for (let c = 0; c < COLS; c++) {
     let emptyCount = 0;
     for (let r = 0; r < ROWS; r++) {
       if (board[r][c] === -1) emptyCount++;
       else break;
     }
-
     for (let i = 0; i < emptyCount; i++) {
-      const type = Math.floor(Math.random() * typesCount);
+      const type = Math.floor(Math.random() * PIECE_COUNT);
       board[i][c] = type;
       newCars.push({ col: c, type, targetRow: i });
     }
   }
-
   return newCars;
 }
 
@@ -207,23 +301,27 @@ function swap(r1, c1, r2, c2) {
   const tmp = board[r1][c1];
   board[r1][c1] = board[r2][c2];
   board[r2][c2] = tmp;
+  // Обновляем bonusMeta при перемещении
+  const k1 = `${r1},${c1}`, k2 = `${r2},${c2}`;
+  if (bonusMeta[k1]) { const v = bonusMeta[k1]; delete bonusMeta[k1]; bonusMeta[k2] = v; }
+  else if (bonusMeta[k2]) { const v = bonusMeta[k2]; delete bonusMeta[k2]; bonusMeta[k1] = v; }
 }
 
 function findValidMove() {
-  for (let r = 0; r < ROWS; r++) {
+  for (let r = 0; r < ROWS; r++)
     for (let c = 0; c < COLS; c++) {
-      if (c + 1 < COLS) {
+      if (board[r][c] >= PIECE_MONSTER) continue; // бонусы не участвуют
+      if (c + 1 < COLS && board[r][c + 1] < PIECE_MONSTER) {
         swap(r, c, r, c + 1);
-        if (findMatches().size > 0) { swap(r, c, r, c + 1); return [{ row: r, col: c }, { row: r, col: c + 1 }]; }
+        if (findMatchesWithDetails().matched.size > 0) { swap(r, c, r, c + 1); return [{ row: r, col: c }, { row: r, col: c + 1 }]; }
         swap(r, c, r, c + 1);
       }
-      if (r + 1 < ROWS) {
+      if (r + 1 < ROWS && board[r + 1] && board[r + 1][c] < PIECE_MONSTER) {
         swap(r, c, r + 1, c);
-        if (findMatches().size > 0) { swap(r, c, r + 1, c); return [{ row: r, col: c }, { row: r + 1, col: c }]; }
+        if (findMatchesWithDetails().matched.size > 0) { swap(r, c, r + 1, c); return [{ row: r, col: c }, { row: r + 1, col: c }]; }
         swap(r, c, r + 1, c);
       }
     }
-  }
   return null;
 }
 
@@ -233,7 +331,7 @@ function shuffleBoard() {
   const flat = [];
   for (let r = 0; r < ROWS; r++)
     for (let c = 0; c < COLS; c++)
-      if (board[r][c] !== -1) flat.push(board[r][c]);
+      if (board[r][c] >= 0 && board[r][c] < PIECE_COUNT) flat.push(board[r][c]);
   for (let i = flat.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [flat[i], flat[j]] = [flat[j], flat[i]];
@@ -241,52 +339,82 @@ function shuffleBoard() {
   let idx = 0;
   for (let r = 0; r < ROWS; r++)
     for (let c = 0; c < COLS; c++)
-      if (board[r][c] !== -1) board[r][c] = flat[idx++];
+      if (board[r][c] >= 0 && board[r][c] < PIECE_COUNT) board[r][c] = flat[idx++];
+  bonusMeta = {};
 }
 
 // ─── ОСНОВНОЙ ЦИКЛ ───────────────────────────────────────
 
-async function processMatches() {
-  let matched = findMatches();
+async function processMatches(playerTriggered = false) {
+  let result = findMatchesWithDetails();
   let totalRemoved = 0;
 
-  while (matched.size > 0) {
+  while (result.matched.size > 0) {
+    const { matched, groups } = result;
     const cells = parseMatches(matched);
     totalRemoved += cells.length;
 
+    // Подсчёт бонусов
+    const bonuses = calcBonuses(groups);
+
+    // Очки
     const basePoints = cells.length * 10;
     const comboPoints = Math.floor(basePoints * combo);
     score += comboPoints;
     updateStats();
 
+    // Отображаем совпадения
     renderMatchHighlight(cells, comboPoints);
-    await delay(400);
+    await delay(350);
 
-    for (const { row, col } of cells) board[row][col] = -1;
+    // Удаляем совпавшие фишки
+    for (const { row, col } of cells) {
+      const key = `${row},${col}`;
+      delete bonusMeta[key];
+      board[row][col] = -1;
+    }
     renderEmptyCells();
-    await delay(150);
+    await delay(100);
 
-    const drops = applyGravity();
-    if (drops.length > 0) {
-      await animateDrops(drops);
-    } else {
+    // Ставим бонусы
+    for (const [key, pieceType] of bonuses) {
+      const [r, c] = key.split(',').map(Number);
+      board[r][c] = pieceType;
+      if (pieceType === PIECE_MONSTER) {
+        // Определяем направление: если в groups есть 'h' группа с этой клеткой
+        let dir = 'h';
+        for (const g of groups) {
+          if (g.size === 4 && g.cells.some(cl => cl.row === r && cl.col === c)) {
+            dir = g.direction;
+            break;
+          }
+        }
+        bonusMeta[key] = { dir };
+      }
+    }
+
+    if (bonuses.size > 0) {
       render();
-      await delay(50);
+      await delay(300);
     }
 
+    // Гравитация
+    const drops = applyGravity();
+    if (drops.length > 0) await animateDrops(drops);
+    else { render(); await delay(30); }
+
+    // Новые машинки
     const newCars = generateNewCars();
-    if (newCars.length > 0) {
-      await animateNewCars(newCars);
-    }
+    if (newCars.length > 0) await animateNewCars(newCars);
 
     combo++;
-    matched = findMatches();
+    result = findMatchesWithDetails();
   }
 
   if (totalRemoved > 0) {
     comboEl.textContent = `x${combo}`;
     comboEl.style.animation = 'comboFlash 0.3s ease';
-    setTimeout(() => { comboEl.style.animation = ''; }, 300);
+    setTimeout(() => comboEl.style.animation = '', 300);
   } else {
     combo = 1;
     comboEl.textContent = 'x1';
@@ -299,16 +427,15 @@ async function processMatches() {
 
 async function makeMove(r1, c1, r2, c2) {
   if (isAnimating || isGameOver) return false;
-
   isAnimating = true;
   selectedCell = null;
   hintCells = [];
 
   await animateSwap(r1, c1, r2, c2);
   swap(r1, c1, r2, c2);
-  const matched = findMatches();
+  const result = findMatchesWithDetails();
 
-  if (matched.size === 0) {
+  if (result.matched.size === 0) {
     await animateSwap(r1, c1, r2, c2);
     swap(r1, c1, r2, c2);
     isAnimating = false;
@@ -319,8 +446,7 @@ async function makeMove(r1, c1, r2, c2) {
   moves++;
   combo = 1;
   updateStats();
-
-  await processMatches();
+  await processMatches(true);
 
   if (!hasValidMove()) {
     combo = 1;
@@ -338,28 +464,94 @@ async function makeMove(r1, c1, r2, c2) {
   return true;
 }
 
+// ─── АКТИВАЦИЯ БОНУСА КЛИКОМ ────────────────────────────
+
+async function activateClickedBonus(row, col) {
+  if (isAnimating || isGameOver) return;
+  const type = board[row][col];
+  if (type !== PIECE_MONSTER && type !== PIECE_REDBULL) return;
+
+  isAnimating = true;
+  selectedCell = null;
+  hintCells = [];
+
+  // Визуальная вспышка
+  bonusAnim = null;
+
+  const cleared = activateBonus(row, col);
+
+  // Анимация бонуса
+  await animateBonusEffect(row, col, type);
+
+  // Удаляем все задетые клетки
+  let removedScore = 0;
+  for (const { row: r, col: c } of cleared) {
+    const key = `${r},${c}`;
+    if (board[r][c] >= 0 && board[r][c] < PIECE_COUNT) {
+      removedScore += 10;
+    }
+    delete bonusMeta[key];
+    board[r][c] = -1;
+  }
+  // Центр (сам бонус) уже в cleared или нет?
+  if (board[row][col] !== -1) {
+    board[row][col] = -1;
+    delete bonusMeta[`${row},${col}`];
+  }
+
+  bonusAnim = null;
+  score += removedScore;
+  updateStats();
+
+  renderEmptyCells();
+  await delay(150);
+
+  // Гравитация и пополнение
+  const drops = applyGravity();
+  if (drops.length > 0) await animateDrops(drops);
+  else render();
+  await delay(50);
+
+  const newCars = generateNewCars();
+  if (newCars.length > 0) await animateNewCars(newCars);
+
+  // Проверка каскадов
+  await processMatches();
+
+  if (!hasValidMove()) {
+    combo = 1;
+    shuffleBoard();
+    comboEl.textContent = '🔀';
+    render();
+    await delay(400);
+    await processMatches();
+    combo = 1;
+    comboEl.textContent = 'x1';
+  }
+
+  render();
+  isAnimating = false;
+}
+
 // ============================================================
 //   АНИМАЦИИ
 // ============================================================
 
 function animateDrops(drops) {
   return new Promise(resolve => {
-    if (drops.length === 0) { resolve(); return; }
-    const startTime = performance.now();
+    if (!drops.length) { resolve(); return; }
+    const start = performance.now();
     const exclude = new Set(drops.map(d => `${d.col},${d.toRow}`));
-
-    function frame(time) {
-      const t = Math.min((time - startTime) / DROP_DURATION, 1);
-      const ease = 1 - Math.pow(1 - t, 3);
-
+    function frame(t) {
+      const p = Math.min((t - start) / DROP_DURATION, 1);
+      const e = 1 - Math.pow(1 - p, 3);
       const anims = drops.map(d => ({
         col: d.col, type: d.type,
         x: d.col * CELL_SIZE + CELL_SIZE / 2,
-        y: (d.fromRow + (d.toRow - d.fromRow) * ease) * CELL_SIZE + CELL_SIZE / 2,
+        y: (d.fromRow + (d.toRow - d.fromRow) * e) * CELL_SIZE + CELL_SIZE / 2,
       }));
-
       renderAnimFrame(anims, exclude);
-      if (t < 1) requestAnimationFrame(frame); else resolve();
+      if (p < 1) requestAnimationFrame(frame); else resolve();
     }
     requestAnimationFrame(frame);
   });
@@ -367,23 +559,20 @@ function animateDrops(drops) {
 
 function animateNewCars(newCars) {
   return new Promise(resolve => {
-    if (newCars.length === 0) { resolve(); return; }
-    const startTime = performance.now();
+    if (!newCars.length) { resolve(); return; }
+    const start = performance.now();
     const exclude = new Set(newCars.map(nc => `${nc.col},${nc.targetRow}`));
-
-    function frame(time) {
-      const t = Math.min((time - startTime) / FALL_DURATION, 1);
+    function frame(t) {
+      const p = Math.min((t - start) / FALL_DURATION, 1);
       const c1 = 1.70158, c3 = c1 + 1;
-      const ease = 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
-
+      const e = 1 + c3 * Math.pow(p - 1, 3) + c1 * Math.pow(p - 1, 2);
       const anims = newCars.map(nc => ({
         col: nc.col, type: nc.type,
         x: nc.col * CELL_SIZE + CELL_SIZE / 2,
-        y: (-CELL_SIZE + (nc.targetRow * CELL_SIZE + CELL_SIZE) * ease) + CELL_SIZE / 2,
+        y: (-CELL_SIZE + (nc.targetRow * CELL_SIZE + CELL_SIZE) * e) + CELL_SIZE / 2,
       }));
-
       renderAnimFrame(anims, exclude);
-      if (t < 1) requestAnimationFrame(frame); else resolve();
+      if (p < 1) requestAnimationFrame(frame); else resolve();
     }
     requestAnimationFrame(frame);
   });
@@ -391,22 +580,61 @@ function animateNewCars(newCars) {
 
 function animateSwap(r1, c1, r2, c2) {
   return new Promise(resolve => {
-    const startTime = performance.now();
-    const startX1 = c1 * CELL_SIZE, startY1 = r1 * CELL_SIZE;
-    const startX2 = c2 * CELL_SIZE, startY2 = r2 * CELL_SIZE;
+    const start = performance.now();
+    const sx1 = c1 * CELL_SIZE, sy1 = r1 * CELL_SIZE;
+    const sx2 = c2 * CELL_SIZE, sy2 = r2 * CELL_SIZE;
     const dx = (c2 - c1) * CELL_SIZE, dy = (r2 - r1) * CELL_SIZE;
-
-    function frame(time) {
-      const t = Math.min((time - startTime) / SWAP_DURATION, 1);
-      const ease = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
-
+    function frame(t) {
+      const p = Math.min((t - start) / SWAP_DURATION, 1);
+      const e = p < 0.5 ? 2 * p * p : -1 + (4 - 2 * p) * p;
       const anims = [
-        { col: c1, type: board[r1][c1], x: (startX1 + dx * ease) + CELL_SIZE / 2, y: (startY1 + dy * ease) + CELL_SIZE / 2 },
-        { col: c2, type: board[r2][c2], x: (startX2 - dx * ease) + CELL_SIZE / 2, y: (startY2 - dy * ease) + CELL_SIZE / 2 },
+        { col: c1, type: board[r1][c1], x: (sx1 + dx * e) + CELL_SIZE / 2, y: (sy1 + dy * e) + CELL_SIZE / 2 },
+        { col: c2, type: board[r2][c2], x: (sx2 - dx * e) + CELL_SIZE / 2, y: (sy2 - dy * e) + CELL_SIZE / 2 },
       ];
-
       renderAnimFrame(anims, new Set([`${c1},${r1}`, `${c2},${r2}`]));
-      if (t < 1) requestAnimationFrame(frame); else resolve();
+      if (p < 1) requestAnimationFrame(frame); else resolve();
+    }
+    requestAnimationFrame(frame);
+  });
+}
+
+/** Анимация взрыва/очистки бонуса */
+function animateBonusEffect(row, col, type) {
+  return new Promise(resolve => {
+    const start = performance.now();
+    const duration = 400;
+
+    function frame(t) {
+      const p = Math.min((t - start) / duration, 1);
+      // Пульсирующий круг
+      ctx.clearRect(0, 0, 480, 480);
+      drawGrid();
+
+      // Рисуем всё
+      for (let r = 0; r < ROWS; r++)
+        for (let c = 0; c < COLS; c++)
+          if (board[r][c] !== -1)
+            drawCar(ctx, c * CELL_SIZE + CELL_SIZE / 2, r * CELL_SIZE + CELL_SIZE / 2, board[r][c], CELL_SIZE - 4);
+
+      // Эффект взрыва поверх
+      const cx = col * CELL_SIZE + CELL_SIZE / 2;
+      const cy = row * CELL_SIZE + CELL_SIZE / 2;
+      const radius = type === PIECE_REDBULL
+        ? CELL_SIZE * 1.5 * p
+        : CELL_SIZE * 2 * Math.max(0, p - 0.2);
+
+      if (radius > 5) {
+        ctx.save();
+        const alpha = type === PIECE_REDBULL ? 1 - p : 1 - Math.max(0, (p - 0.2) / 0.8);
+        ctx.globalAlpha = alpha * 0.3;
+        ctx.fillStyle = type === PIECE_REDBULL ? '#e74c3c' : '#ffd200';
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      if (p < 1) requestAnimationFrame(frame); else resolve();
     }
     requestAnimationFrame(frame);
   });
@@ -417,27 +645,68 @@ function animateSwap(r1, c1, r2, c2) {
 // ============================================================
 
 function drawCar(ctx, x, y, type, size) {
-  const car = carTypes[type];
-  if (!car) return;
+  if (type >= 0 && type < PIECE_COUNT) {
+    const car = carTypes[type];
+    if (!car) return;
+    const grad = ctx.createRadialGradient(x - 4, y - 4, 2, x, y, size / 2 - 1);
+    grad.addColorStop(0, car.light);
+    grad.addColorStop(1, car.fill);
+    ctx.beginPath();
+    ctx.arc(x, y, size / 2 - 2, 0, Math.PI * 2);
+    ctx.fillStyle = grad;
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
 
-  const grad = ctx.createRadialGradient(x - 4, y - 4, 2, x, y, size / 2 - 1);
-  grad.addColorStop(0, car.light);
-  grad.addColorStop(1, car.fill);
+    const img = carImages[type];
+    if (img) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(x, y, size / 2 - 3, 0, Math.PI * 2);
+      ctx.clip();
+      const s = (size - 10) / Math.max(img.width, img.height);
+      ctx.drawImage(img, x - (img.width * s) / 2, y - (img.height * s) / 2, img.width * s, img.height * s);
+      ctx.restore();
+    }
+    return;
+  }
+
+  // Бонусная фишка
+  const bonusColors = {
+    [PIECE_MONSTER]: { fill: '#00cc44', light: '#66ff99', name: 'Monster' },
+    [PIECE_REDBULL]: { fill: '#cc0000', light: '#ff4444', name: 'Red Bull' },
+  };
+  const bc = bonusColors[type] || { fill: '#888', light: '#bbb', name: '?' };
+
+  // Пульсирующее свечение
+  const glow = Math.sin(Date.now() / 200) * 0.3 + 0.7;
+
+  ctx.save();
+  // Внешнее свечение
+  ctx.shadowColor = bc.light;
+  ctx.shadowBlur = 12 + glow * 6;
+
+  const grad = ctx.createRadialGradient(x - 4, y - 4, 2, x, y, size / 2);
+  grad.addColorStop(0, bc.light);
+  grad.addColorStop(1, bc.fill);
   ctx.beginPath();
-  ctx.arc(x, y, size / 2 - 2, 0, Math.PI * 2);
+  ctx.arc(x, y, size / 2 - 1, 0, Math.PI * 2);
   ctx.fillStyle = grad;
   ctx.fill();
-  ctx.strokeStyle = 'rgba(255,255,255,0.12)';
-  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+  ctx.lineWidth = 2;
   ctx.stroke();
+  ctx.restore();
 
-  const img = carImages[type];
+  // SVG бонуса
+  const img = bonusImages[type];
   if (img) {
     ctx.save();
     ctx.beginPath();
     ctx.arc(x, y, size / 2 - 3, 0, Math.PI * 2);
     ctx.clip();
-    const s = (size - 10) / Math.max(img.width, img.height);
+    const s = (size - 8) / Math.max(img.width, img.height);
     ctx.drawImage(img, x - (img.width * s) / 2, y - (img.height * s) / 2, img.width * s, img.height * s);
     ctx.restore();
   }
@@ -478,49 +747,34 @@ function renderMatchHighlight(cells, points) {
   ctx.clearRect(0, 0, 480, 480);
   drawGrid();
   const matchSet = new Set(cells.map(c => `${c.row},${c.col}`));
-
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) {
-      const key = `${r},${c}`;
       const type = board[r][c];
       if (type === -1) continue;
-
       const cx = c * CELL_SIZE + CELL_SIZE / 2;
       const cy = r * CELL_SIZE + CELL_SIZE / 2;
-
-      if (matchSet.has(key)) {
+      if (matchSet.has(`${r},${c}`)) {
         ctx.save();
-        ctx.shadowColor = carTypes[type].light;
+        ctx.shadowColor = (type < PIECE_COUNT ? carTypes[type]?.light : '#ffd200') || '#ffd200';
         ctx.shadowBlur = 15;
         drawCar(ctx, cx, cy, type, CELL_SIZE - 4);
         ctx.restore();
         ctx.strokeStyle = 'rgba(255,255,255,0.6)';
         ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(cx, cy, CELL_SIZE / 2 - 3, 0, Math.PI * 2);
-        ctx.stroke();
-      } else {
-        drawCar(ctx, cx, cy, type, CELL_SIZE - 4);
-      }
+        ctx.beginPath(); ctx.arc(cx, cy, CELL_SIZE / 2 - 3, 0, Math.PI * 2); ctx.stroke();
+      } else drawCar(ctx, cx, cy, type, CELL_SIZE - 4);
     }
   }
-
   const avgRow = cells.reduce((s, c) => s + c.row, 0) / cells.length;
   const avgCol = cells.reduce((s, c) => s + c.col, 0) / cells.length;
-  const cx = avgCol * CELL_SIZE + CELL_SIZE / 2;
-  const cy = avgRow * CELL_SIZE + CELL_SIZE / 2;
-
   ctx.save();
   ctx.font = 'bold 28px "Segoe UI", sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.shadowColor = 'rgba(0,0,0,0.8)';
-  ctx.shadowBlur = 12;
-  ctx.strokeStyle = 'rgba(0,0,0,0.6)';
-  ctx.lineWidth = 4;
-  ctx.strokeText(`+${points}`, cx, cy);
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = 12;
+  ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = 4;
+  ctx.strokeText(`+${points}`, avgCol * CELL_SIZE + CELL_SIZE / 2, avgRow * CELL_SIZE + CELL_SIZE / 2);
   ctx.fillStyle = '#ffd200';
-  ctx.fillText(`+${points}`, cx, cy);
+  ctx.fillText(`+${points}`, avgCol * CELL_SIZE + CELL_SIZE / 2, avgRow * CELL_SIZE + CELL_SIZE / 2);
   ctx.restore();
 }
 
@@ -538,95 +792,77 @@ function drawSelectionAndHints() {
     ctx.fillStyle = 'rgba(255, 210, 0, 0.12)';
     ctx.fillRect(col * CELL_SIZE, row * CELL_SIZE, CELL_SIZE, CELL_SIZE);
     ctx.strokeStyle = 'rgba(255, 210, 0, 0.4)';
-    ctx.lineWidth = 2;
-    ctx.setLineDash([4, 4]);
+    ctx.lineWidth = 2; ctx.setLineDash([4, 4]);
     ctx.strokeRect(col * CELL_SIZE + 2, row * CELL_SIZE + 2, CELL_SIZE - 4, CELL_SIZE - 4);
     ctx.setLineDash([]);
   }
 }
 
-function renderAnimFrame(anims, excludePositions = null) {
-  const excluded = excludePositions || new Set(anims.map(a => `${a.col},${Math.round(a.y / CELL_SIZE - 0.5)}`));
-
+function renderAnimFrame(anims, excludePositions) {
+  const excluded = excludePositions || new Set(
+    anims.map(a => `${a.col},${Math.round(a.y / CELL_SIZE - 0.5)}`)
+  );
   ctx.clearRect(0, 0, 480, 480);
   drawGrid();
-
-  for (let r = 0; r < ROWS; r++) {
+  for (let r = 0; r < ROWS; r++)
     for (let c = 0; c < COLS; c++) {
       if (board[r][c] === -1) continue;
       if (excluded.has(`${c},${r}`)) continue;
       drawCar(ctx, c * CELL_SIZE + CELL_SIZE / 2, r * CELL_SIZE + CELL_SIZE / 2, board[r][c], CELL_SIZE - 4);
     }
-  }
-
   for (const a of anims) {
     ctx.save();
-    ctx.shadowColor = 'rgba(0,0,0,0.35)';
-    ctx.shadowBlur = 8;
-    ctx.shadowOffsetY = 4;
+    ctx.shadowColor = 'rgba(0,0,0,0.35)'; ctx.shadowBlur = 8; ctx.shadowOffsetY = 4;
     drawCar(ctx, a.x, a.y, a.type, CELL_SIZE - 4);
     ctx.restore();
   }
 }
 
 // ─── УТИЛИТЫ ─────────────────────────────────────────────
-
-function delay(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
-
+function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
 function updateStats() {
   scoreEl.textContent = score;
   movesEl.textContent = moves;
   comboEl.textContent = `x${combo}`;
 }
-
-/** Обновляет легенду под доской */
 function updateLegend() {
   const legend = document.getElementById('gameLegend');
   if (!legend) return;
   legend.innerHTML = carTypes.map(t =>
     `<div class="legend-item"><img src="${t.svg}" alt="${t.name}" class="legend-svg"> ${t.name}</div>`
-  ).join('');
+  ).join('') +
+    `<div class="legend-item"><img src="bonus/monster-graffio.svg" alt="Monster" class="legend-svg bonus-legend"> Monster</div>` +
+    `<div class="legend-item"><img src="bonus/red-bull-logo.svg" alt="Red Bull" class="legend-svg bonus-legend"> Red Bull</div>`;
 }
 
 // ─── ВЫБОР ТЕМЫ ──────────────────────────────────────────
-
 async function selectTheme(themeId) {
   menuOverlay.classList.add('hidden');
   await delay(300);
-
-  await preloadThemeSVGs(themeId);
+  await Promise.all([preloadThemeSVGs(themeId), preloadBonusSVGs()]);
   currentTheme = themeId;
-
-  // Показываем игровой UI
   document.getElementById('gameHeader').style.display = '';
   document.getElementById('boardWrapper').style.display = '';
   document.getElementById('gameControls').style.display = '';
   document.getElementById('gameLegend').style.display = '';
-
   updateLegend();
   startGame();
 }
 
 function showMenu() {
-  // Прячем игровой UI
   document.getElementById('gameHeader').style.display = 'none';
   document.getElementById('boardWrapper').style.display = 'none';
   document.getElementById('gameControls').style.display = 'none';
   document.getElementById('gameLegend').style.display = 'none';
   overlay.classList.remove('active');
-
-  // Показываем меню
   menuOverlay.classList.remove('hidden');
-  selectedCell = null;
-  isAnimating = false;
-  isGameOver = false;
+  selectedCell = null; isAnimating = false; isGameOver = false;
 }
 
-// ─── КЛИКИ И КНОПКИ ──────────────────────────────────────
+// ─── КЛИКИ ───────────────────────────────────────────────
 
 canvas.addEventListener('click', (e) => {
   if (isAnimating || isGameOver) return;
-
   const rect = canvas.getBoundingClientRect();
   const scaleX = canvas.width / rect.width;
   const scaleY = canvas.height / rect.height;
@@ -634,73 +870,54 @@ canvas.addEventListener('click', (e) => {
   const row = Math.floor((e.clientY - rect.top) * scaleY / CELL_SIZE);
   if (row < 0 || row >= ROWS || col < 0 || col >= COLS) return;
 
-  if (selectedCell === null) { selectedCell = { row, col }; hintCells = []; render(); return; }
+  // Клик по бонусной фишке?
+  if (board[row][col] === PIECE_MONSTER || board[row][col] === PIECE_REDBULL) {
+    activateClickedBonus(row, col);
+    return;
+  }
 
+  if (selectedCell === null) { selectedCell = { row, col }; hintCells = []; render(); return; }
   const { row: sr, col: sc } = selectedCell;
   if (sr === row && sc === col) { selectedCell = null; render(); return; }
-
   const dr = Math.abs(sr - row), dc = Math.abs(sc - col);
-  if ((dr === 1 && dc === 0) || (dr === 0 && dc === 1)) {
-    makeMove(sr, sc, row, col);
-  } else {
-    selectedCell = { row, col };
-    render();
-  }
+  if ((dr === 1 && dc === 0) || (dr === 0 && dc === 1)) makeMove(sr, sc, row, col);
+  else { selectedCell = { row, col }; render(); }
 });
 
-// Клик по карточкам меню
+// Меню
 document.getElementById('modeCars')?.addEventListener('click', () => selectTheme('cars'));
 document.getElementById('modeBrands')?.addEventListener('click', () => selectTheme('brands'));
-
-// Кнопки
 document.getElementById('restartBtn')?.addEventListener('click', startGame);
 document.getElementById('menuBtn')?.addEventListener('click', showMenu);
 
 document.getElementById('hintBtn')?.addEventListener('click', () => {
   if (isAnimating || isGameOver) return;
   const move = findValidMove();
-  if (move) {
-    hintCells = move;
-    selectedCell = null;
-    render();
-    setTimeout(() => { hintCells = []; render(); }, 2000);
-  }
+  if (move) { hintCells = move; selectedCell = null; render(); setTimeout(() => { hintCells = []; render(); }, 2000); }
 });
 
 document.getElementById('shuffleBtn')?.addEventListener('click', async () => {
   if (isAnimating || isGameOver) return;
-  isAnimating = true;
-  selectedCell = null;
-  hintCells = [];
-  shuffleBoard();
-  render();
+  isAnimating = true; selectedCell = null; hintCells = [];
+  shuffleBoard(); render();
   await delay(200);
   await processMatches();
-  combo = 1;
-  comboEl.textContent = 'x1';
+  combo = 1; comboEl.textContent = 'x1';
   isAnimating = false;
 });
 
 // ─── ЗАПУСК ──────────────────────────────────────────────
-
 async function startGame() {
-  score = 0;
-  moves = 0;
-  combo = 1;
-  selectedCell = null;
-  hintCells = [];
-  isAnimating = false;
-  isGameOver = false;
+  score = 0; moves = 0; combo = 1;
+  selectedCell = null; hintCells = [];
+  isAnimating = false; isGameOver = false;
+  bonusMeta = {};
   overlay?.classList.remove('active');
-
   fillBoard();
   let attempts = 0;
   while (!hasValidMove() && attempts < 100) { shuffleBoard(); attempts++; }
-
   updateStats();
   render();
 }
 
-// Стартуем с меню (без загрузки тем)
-// Темы загружаются при клике на карточку
 console.log('🖼️ CarCrush — choose your theme!');
