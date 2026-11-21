@@ -38,25 +38,26 @@ const BONUS_SVGS = {
 const LEVELS = [
   {
     num: 1,
-    goalType: 2,      // Ferrari
-    goalName: 'Ferrari',
-    target: 12,
+    goalType: 'score',      // набрать очки
+    goalName: '500 очков',
+    target: 500,
     movesLimit: 20,
-    reward: 'Отличный старт! Продолжай в том же духе! 🚀',
+    reward: 'Отлично! Продолжай в том же духе! 🚀',
   },
   {
     num: 2,
-    goalType: 1,      // BMW
-    goalName: 'BMW',
-    target: 15,
+    goalType: 'monster',    // получить Monster Grafio
+    goalName: 'Monster Grafio',
+    target: 1,              // нужно 1 Monster
     movesLimit: 25,
     reward: 'Поздравляем! Ты настоящий мастер CarCrush! 🏆',
   },
 ];
 
 // ─── СОСТОЯНИЕ ───────────────────────────────────────────
-let currentLevel = 0;     // индекс в LEVELS
-let collected = 0;        // сколько целевых фишек собрано
+let currentLevel = 0;
+let goalProgress = 0;       // текущий прогресс: для score — очки, для monster — счётчик
+let monsterCount = 0;      // сколько Monster создано
 let gameOver = false;
 
 let board = [];
@@ -342,20 +343,26 @@ async function processMatches() {
     const bonuses = calcBonuses(groups);
     const level = LEVELS[currentLevel];
 
-    // Считаем целевые фишки
-    let targetCollected = 0;
-    for (const g of groups) {
-      if (g.type === level.goalType) {
-        for (const cl of g.cells) {
-          if (board[cl.row][cl.col] === level.goalType) targetCollected++;
-        }
-      }
+    // Count Monster creations
+    let monstersCreated = 0;
+    for (const [key, pieceType] of bonuses) {
+      if (pieceType === PIECE_MONSTER) monstersCreated++;
     }
 
-    collected += targetCollected;
     const basePoints = cells.length * 10;
     const comboPoints = Math.floor(basePoints * combo);
     score += comboPoints;
+
+    // Update goal progress
+    if (level.goalType === 'score') {
+      goalProgress = score;
+    } else if (level.goalType === 'monster') {
+      goalProgress = monsterCount;
+    }
+
+    monsterCount += monstersCreated;
+    if (level.goalType === 'monster') goalProgress = monsterCount;
+
     updateStats();
     updateProgress();
 
@@ -394,8 +401,7 @@ async function processMatches() {
     result = findMatchesWithDetails();
 
     // Проверка прохождения уровня
-    if (collected >= level.target) {
-      // Немедленно завершаем уровень
+    if (goalProgress >= level.target) {
       render();
       isAnimating = false;
       completeLevel(true);
@@ -441,17 +447,13 @@ async function makeMove(r1, c1, r2, c2) {
 
   await processMatches();
 
-  if (gameOver) return true; // уровень пройден
+  if (gameOver) return true;
 
   // Проверка лимита ходов
   const level = LEVELS[currentLevel];
   if (moves >= level.movesLimit && !gameOver) {
-    // Ходы закончились
-    if (collected >= level.target) {
-      completeLevel(true);
-    } else {
-      completeLevel(false);
-    }
+    if (goalProgress >= level.target) completeLevel(true);
+    else completeLevel(false);
     isAnimating = false;
     return true;
   }
@@ -489,19 +491,28 @@ function completeLevel(won) {
       if (isLast) {
         currentLevel = 0;
         score = 0;
-        collected = 0;
+        goalProgress = 0;
+        monsterCount = 0;
       } else {
         currentLevel++;
-        collected = 0;
+        goalProgress = 0;
+        monsterCount = 0;
       }
       startLevel();
     };
   } else {
     overlayTitleEl.textContent = '⏰ Ходы закончились!';
-    rewardTextEl.textContent = `Не хватило ${level.target - collected} шт. ${level.goalName}. Попробуй ещё! 🔄`;
+    const remaining = Math.max(0, level.target - goalProgress);
+    const goalText = level.goalType === 'score'
+      ? `Не хватило ${remaining} очков.`
+      : level.goalType === 'monster'
+        ? `Monster Grafio не собран.`
+        : '';
+    rewardTextEl.textContent = `${goalText} Попробуй ещё! 🔄`;
     overlayBtnEl.textContent = '🔄 Повторить уровень';
     overlayBtnEl.onclick = () => {
-      collected = 0;
+      goalProgress = 0;
+      monsterCount = 0;
       score = 0;
       startLevel();
     };
@@ -538,7 +549,9 @@ async function activateClickedBonus(row, col) {
   }
 
   score += removedScore;
+  if (LEVELS[currentLevel].goalType === 'score') goalProgress = score;
   updateStats();
+  updateProgress();
 
   renderEmptyCells();
   await delay(150);
@@ -825,19 +838,17 @@ function updateStats() {
 
 function updateProgress() {
   const level = LEVELS[currentLevel];
-  const pct = Math.min(100, (collected / level.target) * 100);
+  const pct = Math.min(100, (goalProgress / level.target) * 100);
   progressFillEl.style.width = pct + '%';
-  progressTextEl.textContent = `${collected}/${level.target}`;
+  progressTextEl.textContent = level.goalType === 'score'
+    ? `${goalProgress} / ${level.target} очков`
+    : `${goalProgress} / ${level.target} шт`;
 
   const movesLeft = level.movesLimit - moves;
-  movesEl.textContent = `${moves}/${level.movesLimit}`;
+  movesEl.textContent = `${moves} / ${level.movesLimit}`;
 
-  // Меняем цвет если мало ходов
-  if (movesLeft <= 5) {
-    movesEl.style.color = '#ff6464';
-  } else {
-    movesEl.style.color = '';
-  }
+  if (movesLeft <= 5) movesEl.style.color = '#ff6464';
+  else movesEl.style.color = '';
 }
 
 function updateLegend() {
@@ -846,7 +857,7 @@ function updateLegend() {
   legend.innerHTML = carTypes.map(t =>
     `<div class="legend-item"><img src="${t.svg}" alt="${t.name}" class="legend-svg"> ${t.name}</div>`
   ).join('') +
-    `<div class="legend-item"><img src="bonus/monster-graffio.svg" alt="Monster" class="legend-svg bonus-legend"> Monster</div>` +
+    `<div class="legend-item"><img src="bonus/monster-graffio.svg" alt="Monster Grafio" class="legend-svg bonus-legend"> Monster Grafio</div>` +
     `<div class="legend-item"><img src="bonus/red-bull-logo.svg" alt="Red Bull" class="legend-svg bonus-legend"> Red Bull</div>`;
 }
 
@@ -862,10 +873,17 @@ async function startLevel() {
   overlayEl.classList.remove('active');
 
   levelNumEl.textContent = level.num;
-  goalLabelEl.textContent = 'собери';
-  goalIconEl.src = carTypes[level.goalType].svg;
-  goalIconEl.alt = level.goalName;
-  goalNameEl.textContent = level.goalName;
+  goalLabelEl.textContent = 'задание:';
+
+  if (level.goalType === 'score') {
+    goalIconEl.src = 'bonus/red-bull-logo.svg';
+    goalIconEl.alt = 'очки';
+    goalNameEl.textContent = `набрать ${level.goalName}`;
+  } else if (level.goalType === 'monster') {
+    goalIconEl.src = 'bonus/monster-graffio.svg';
+    goalIconEl.alt = 'Monster';
+    goalNameEl.textContent = `получить ${level.goalName}`;
+  }
 
   fillBoard();
   let attempts = 0;
@@ -879,7 +897,8 @@ async function startLevel() {
 async function startGame() {
   currentLevel = 0;
   score = 0;
-  collected = 0;
+  goalProgress = 0;
+  monsterCount = 0;
   await startLevel();
 }
 
@@ -912,7 +931,8 @@ document.getElementById('resetBtn')?.addEventListener('click', () => {
   if (isAnimating) return;
   currentLevel = 0;
   score = 0;
-  collected = 0;
+  goalProgress = 0;
+  monsterCount = 0;
   startLevel();
 });
 
@@ -945,7 +965,6 @@ async function init() {
   await preloadAllSVGs();
   updateLegend();
   await startGame();
-  // Непрерывная анимация для пульсации бонусов
   setInterval(() => {
     if (!isAnimating && !gameOver) render();
   }, 50);
