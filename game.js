@@ -1,6 +1,6 @@
 /* ========================================================
    🚗 CarCrush — Match-3 Game
-   Modes: Brands only | Levels system
+   Sound effects + Drag & Drop + 5 Levels
    ======================================================== */
 
 // ─── КОНСТАНТЫ ───────────────────────────────────────────
@@ -9,14 +9,16 @@ const COLS = 8;
 const CELL_SIZE = 60;
 const MIN_MATCH = 3;
 
-const PIECE_BASE     = 0;   // 0-6 — обычные фишки
+const PIECE_BASE     = 0;
 const PIECE_MONSTER  = 7;
 const PIECE_REDBULL  = 8;
 const PIECE_COUNT    = 7;
 
-const DROP_DURATION = 200;
-const FALL_DURATION = 350;
-const SWAP_DURATION = 130;
+// Адаптивные длительности для мобилы
+const isMobile = window.innerWidth <= 600 || navigator.maxTouchPoints > 0;
+const DROP_DURATION = isMobile ? 120 : 200;
+const FALL_DURATION = isMobile ? 200 : 350;
+const SWAP_DURATION = isMobile ? 80 : 130;
 
 // ─── ЛОГОТИПЫ БРЕНДОВ ────────────────────────────────────
 const BRAND_TYPES = [
@@ -34,31 +36,120 @@ const BONUS_SVGS = {
   8: 'bonus/red-bull-logo.svg',
 };
 
-// ─── УРОВНИ ──────────────────────────────────────────────
+// ─── УРОВНИ (5 шт) ──────────────────────────────────────
 const LEVELS = [
   {
     num: 1,
-    goalType: 'score',      // набрать очки
-    goalName: '500 очков',
-    target: 500,
+    goalType: 'brand',
+    brandIndex: 2,       // Ferrari
+    brandName: 'Ferrari',
+    target: 12,
     movesLimit: 20,
-    reward: 'Отлично! Продолжай в том же духе! 🚀',
+    reward: 'Отличный старт! Ты собрал Ferrari! 🚀',
   },
   {
     num: 2,
-    goalType: 'monster',    // получить Monster Grafio
+    goalType: 'score',
+    goalName: '500 очков',
+    target: 500,
+    movesLimit: 20,
+    reward: 'Отлично! Продолжай в том же духе! 🔥',
+  },
+  {
+    num: 3,
+    goalType: 'monster',
     goalName: 'Monster Grafio',
-    target: 1,              // нужно 1 Monster
+    target: 2,
     movesLimit: 25,
-    reward: 'Поздравляем! Ты настоящий мастер CarCrush! 🏆',
+    reward: 'Monster Grafio под контролем! 👹',
+  },
+  {
+    num: 4,
+    goalType: 'combo',
+    goalName: 'комбо x3',
+    target: 3,
+    movesLimit: 25,
+    reward: 'Мастер комбо! Это было впечатляюще! ⚡',
+  },
+  {
+    num: 5,
+    goalType: 'score',
+    goalName: '1000 очков',
+    target: 1000,
+    movesLimit: 30,
+    reward: 'CarCrush покорён! Ты легенда! 👑🏆',
   },
 ];
 
+// ─── ЗВУКИ ───────────────────────────────────────────────
+let audioCtx = null;
+let soundEnabled = true;
+
+function initAudio() {
+  if (!audioCtx) {
+    try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+    catch(e) {}
+  }
+}
+
+function playTone(freq, duration, type = 'sine', vol = 0.15) {
+  if (!soundEnabled || !audioCtx) return;
+  try {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.type = type;
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+    osc.start();
+    osc.stop(audioCtx.currentTime + duration);
+  } catch(e) {}
+}
+
+function soundSwap() {
+  playTone(600, 0.06, 'sine', 0.08);
+}
+
+function soundMatch(count) {
+  const base = 800 + count * 100;
+  playTone(base, 0.12, 'sine', 0.12);
+  setTimeout(() => playTone(base * 1.3, 0.1, 'sine', 0.08), 50);
+}
+
+function soundCombo(level) {
+  for (let i = 0; i < Math.min(level, 5); i++) {
+    setTimeout(() => playTone(500 + i * 200, 0.1, 'sine', 0.1), i * 60);
+  }
+}
+
+function soundBonus() {
+  // loud zap for bonus activation
+  playTone(300, 0.08, 'square', 0.12);
+  setTimeout(() => playTone(200, 0.1, 'sawtooth', 0.1), 50);
+  setTimeout(() => playTone(400, 0.15, 'square', 0.08), 100);
+}
+
+function soundWin() {
+  [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => playTone(f, 0.3, 'sine', 0.12), i * 100));
+}
+
+function soundLose() {
+  [400, 350, 300].forEach((f, i) => setTimeout(() => playTone(f, 0.2, 'sine', 0.1), i * 120));
+}
+
+function soundSelect() {
+  playTone(800, 0.04, 'sine', 0.06);
+}
+
 // ─── СОСТОЯНИЕ ───────────────────────────────────────────
 let currentLevel = 0;
-let goalProgress = 0;       // текущий прогресс: для score — очки, для monster — счётчик
-let monsterCount = 0;      // сколько Monster создано
+let goalProgress = 0;
+let monsterCount = 0;
+let maxComboThisLevel = 0;
 let gameOver = false;
+let audioUnlocked = false;
 
 let board = [];
 let bonusMeta = {};
@@ -68,6 +159,9 @@ let combo = 1;
 let selectedCell = null;
 let isAnimating = false;
 let hintCells = [];
+
+// Drag state
+let dragState = null; // { startRow, startCol, startX, startY, currentX, currentY, active }
 
 let carTypes = BRAND_TYPES;
 let carImages = [];
@@ -343,38 +437,56 @@ async function processMatches() {
     const bonuses = calcBonuses(groups);
     const level = LEVELS[currentLevel];
 
-    // Count Monster creations
-    let monstersCreated = 0;
-    for (const [key, pieceType] of bonuses) {
-      if (pieceType === PIECE_MONSTER) monstersCreated++;
-    }
-
+    // Determine combo level for sound
+    const prevCombo = combo;
     const basePoints = cells.length * 10;
     const comboPoints = Math.floor(basePoints * combo);
     score += comboPoints;
 
-    // Update goal progress
-    if (level.goalType === 'score') {
-      goalProgress = score;
-    } else if (level.goalType === 'monster') {
-      goalProgress = monsterCount;
+    // Count Monsters created
+    let monstersCreated = 0;
+    for (const [key, pieceType] of bonuses) {
+      if (pieceType === PIECE_MONSTER) monstersCreated++;
+    }
+    monsterCount += monstersCreated;
+
+    // Count brand matches for goal
+    let brandCollected = 0;
+    if (level.goalType === 'brand') {
+      for (const g of groups) {
+        if (g.type === level.brandIndex) {
+          for (const cl of g.cells) {
+            if (board[cl.row][cl.col] === level.brandIndex) brandCollected++;
+          }
+        }
+      }
     }
 
-    monsterCount += monstersCreated;
-    if (level.goalType === 'monster') goalProgress = monsterCount;
+    // Update progress
+    if (level.goalType === 'brand') goalProgress += brandCollected;
+    else if (level.goalType === 'score') goalProgress = score;
+    else if (level.goalType === 'monster') goalProgress = monsterCount;
+    else if (level.goalType === 'combo') {
+      if (combo > maxComboThisLevel) maxComboThisLevel = combo;
+      goalProgress = maxComboThisLevel;
+    }
+
+    // Sound
+    if (prevCombo > 1) soundCombo(prevCombo);
+    else soundMatch(cells.length);
 
     updateStats();
     updateProgress();
 
     renderMatchHighlight(cells, comboPoints);
-    await delay(350);
+    await delay(200);
 
     for (const { row, col } of cells) {
       delete bonusMeta[`${row},${col}`];
       board[row][col] = -1;
     }
     renderEmptyCells();
-    await delay(100);
+    await delay(60);
 
     for (const [key, pieceType] of bonuses) {
       const [r, c] = key.split(',').map(Number);
@@ -388,11 +500,11 @@ async function processMatches() {
       }
     }
 
-    if (bonuses.size > 0) { render(); await delay(250); }
+    if (bonuses.size > 0) { render(); await delay(160); }
 
     const drops = applyGravity();
     if (drops.length > 0) await animateDrops(drops);
-    else { render(); await delay(30); }
+    else { render(); await delay(20); }
 
     const newCars = generateNewCars();
     if (newCars.length > 0) await animateNewCars(newCars);
@@ -428,7 +540,9 @@ async function makeMove(r1, c1, r2, c2) {
   isAnimating = true;
   selectedCell = null;
   hintCells = [];
+  dragState = null;
 
+  soundSwap();
   await animateSwap(r1, c1, r2, c2);
   swap(r1, c1, r2, c2);
   const result = findMatchesWithDetails();
@@ -463,7 +577,7 @@ async function makeMove(r1, c1, r2, c2) {
     shuffleBoard();
     comboEl.textContent = '🔀';
     render();
-    await delay(400);
+    await delay(300);
     await processMatches();
     combo = 1;
     comboEl.textContent = 'x1';
@@ -481,6 +595,7 @@ function completeLevel(won) {
   const level = LEVELS[currentLevel];
 
   if (won) {
+    soundWin();
     const isLast = currentLevel >= LEVELS.length - 1;
     overlayTitleEl.textContent = isLast ? '🏆 Все уровни пройдены!' : '🎉 Уровень пройден!';
     rewardTextEl.textContent = isLast
@@ -493,26 +608,30 @@ function completeLevel(won) {
         score = 0;
         goalProgress = 0;
         monsterCount = 0;
+        maxComboThisLevel = 0;
       } else {
         currentLevel++;
         goalProgress = 0;
         monsterCount = 0;
+        maxComboThisLevel = 0;
       }
       startLevel();
     };
   } else {
+    soundLose();
     overlayTitleEl.textContent = '⏰ Ходы закончились!';
     const remaining = Math.max(0, level.target - goalProgress);
-    const goalText = level.goalType === 'score'
-      ? `Не хватило ${remaining} очков.`
-      : level.goalType === 'monster'
-        ? `Monster Grafio не собран.`
-        : '';
+    let goalText = '';
+    if (level.goalType === 'brand') goalText = `Не хватило ${remaining} шт. ${level.brandName}.`;
+    else if (level.goalType === 'score') goalText = `Не хватило ${remaining} очков.`;
+    else if (level.goalType === 'monster') goalText = `Monster Grafio не собран.`;
+    else if (level.goalType === 'combo') goalText = `Нужен комбо x${level.target}, а был только x${maxComboThisLevel}.`;
     rewardTextEl.textContent = `${goalText} Попробуй ещё! 🔄`;
     overlayBtnEl.textContent = '🔄 Повторить уровень';
     overlayBtnEl.onclick = () => {
       goalProgress = 0;
       monsterCount = 0;
+      maxComboThisLevel = 0;
       score = 0;
       startLevel();
     };
@@ -532,6 +651,9 @@ async function activateClickedBonus(row, col) {
   isAnimating = true;
   selectedCell = null;
   hintCells = [];
+  dragState = null;
+
+  soundBonus();
 
   const cleared = activateBonus(row, col);
   await animateBonusEffect(row, col, type);
@@ -554,12 +676,12 @@ async function activateClickedBonus(row, col) {
   updateProgress();
 
   renderEmptyCells();
-  await delay(150);
+  await delay(100);
 
   const drops = applyGravity();
   if (drops.length > 0) await animateDrops(drops);
   else render();
-  await delay(50);
+  await delay(30);
 
   const newCars = generateNewCars();
   if (newCars.length > 0) await animateNewCars(newCars);
@@ -571,7 +693,7 @@ async function activateClickedBonus(row, col) {
     shuffleBoard();
     comboEl.textContent = '🔀';
     render();
-    await delay(400);
+    await delay(300);
     await processMatches();
     combo = 1;
     comboEl.textContent = 'x1';
@@ -649,7 +771,7 @@ function animateSwap(r1, c1, r2, c2) {
 function animateBonusEffect(row, col, type) {
   return new Promise(resolve => {
     const start = performance.now();
-    const duration = 400;
+    const duration = 300;
     function frame(t) {
       const p = Math.min((t - start) / duration, 1);
       ctx.clearRect(0, 0, 480, 480);
@@ -741,6 +863,14 @@ function render() {
   for (let r = 0; r < ROWS; r++)
     for (let c = 0; c < COLS; c++)
       if (board[r][c] !== -1) drawCar(ctx, c * CELL_SIZE + CELL_SIZE / 2, r * CELL_SIZE + CELL_SIZE / 2, board[r][c], CELL_SIZE - 4);
+  // Draw dragged piece
+  if (dragState?.active) {
+    const { startRow, startCol, currentX, currentY } = dragState;
+    const type = board[startRow][startCol];
+    if (type !== undefined && type !== -1) {
+      drawCar(ctx, currentX, currentY, type, CELL_SIZE - 4);
+    }
+  }
 }
 
 function renderEmptyCells() {
@@ -840,9 +970,11 @@ function updateProgress() {
   const level = LEVELS[currentLevel];
   const pct = Math.min(100, (goalProgress / level.target) * 100);
   progressFillEl.style.width = pct + '%';
-  progressTextEl.textContent = level.goalType === 'score'
-    ? `${goalProgress} / ${level.target} очков`
-    : `${goalProgress} / ${level.target} шт`;
+
+  if (level.goalType === 'brand') progressTextEl.textContent = `${goalProgress} / ${level.target} ${level.brandName}`;
+  else if (level.goalType === 'score') progressTextEl.textContent = `${goalProgress} / ${level.target} очков`;
+  else if (level.goalType === 'monster') progressTextEl.textContent = `${goalProgress} / ${level.target} шт`;
+  else if (level.goalType === 'combo') progressTextEl.textContent = `x${goalProgress} / x${level.target}`;
 
   const movesLeft = level.movesLimit - moves;
   movesEl.textContent = `${moves} / ${level.movesLimit}`;
@@ -870,19 +1002,28 @@ async function startLevel() {
   hintCells = [];
   isAnimating = false;
   gameOver = false;
+  dragState = null;
   overlayEl.classList.remove('active');
 
   levelNumEl.textContent = level.num;
   goalLabelEl.textContent = 'задание:';
 
-  if (level.goalType === 'score') {
+  if (level.goalType === 'brand') {
+    goalIconEl.src = carTypes[level.brandIndex].svg;
+    goalIconEl.alt = level.brandName;
+    goalNameEl.textContent = `собрать ${level.target} ${level.brandName}`;
+  } else if (level.goalType === 'score') {
     goalIconEl.src = 'bonus/red-bull-logo.svg';
     goalIconEl.alt = 'очки';
     goalNameEl.textContent = `набрать ${level.goalName}`;
   } else if (level.goalType === 'monster') {
     goalIconEl.src = 'bonus/monster-graffio.svg';
     goalIconEl.alt = 'Monster';
-    goalNameEl.textContent = `получить ${level.goalName}`;
+    goalNameEl.textContent = `получить ${level.target} ${level.goalName}`;
+  } else if (level.goalType === 'combo') {
+    goalIconEl.src = carTypes[2].svg; // Ferrari icon
+    goalIconEl.alt = 'комбо';
+    goalNameEl.textContent = level.goalName;
   }
 
   fillBoard();
@@ -899,32 +1040,116 @@ async function startGame() {
   score = 0;
   goalProgress = 0;
   monsterCount = 0;
+  maxComboThisLevel = 0;
   await startLevel();
 }
 
-// ─── КЛИКИ ───────────────────────────────────────────────
-canvas.addEventListener('click', (e) => {
-  if (isAnimating || gameOver) return;
+// ─── DRAG & DROP ─────────────────────────────────────────
+
+function canvasToBoard(canvasX, canvasY) {
   const rect = canvas.getBoundingClientRect();
   const scaleX = canvas.width / rect.width;
   const scaleY = canvas.height / rect.height;
-  const col = Math.floor((e.clientX - rect.left) * scaleX / CELL_SIZE);
-  const row = Math.floor((e.clientY - rect.top) * scaleY / CELL_SIZE);
+  const x = (canvasX - rect.left) * scaleX;
+  const y = (canvasY - rect.top) * scaleY;
+  const col = Math.floor(x / CELL_SIZE);
+  const row = Math.floor(y / CELL_SIZE);
+  return { row, col, px: x, py: y };
+}
+
+function getCellFromEvent(e) {
+  const touches = e.touches || [e];
+  const t = touches[0];
+  return canvasToBoard(t.clientX, t.clientY);
+}
+
+function onPointerDown(e) {
+  if (isAnimating || gameOver) return;
+  if (audioUnlocked === false) { initAudio(); audioUnlocked = true; }
+
+  const { row, col, px, py } = getCellFromEvent(e);
   if (row < 0 || row >= ROWS || col < 0 || col >= COLS) return;
 
-  // Клик по бонусной фишке?
+  // Бонус?
   if (board[row][col] === PIECE_MONSTER || board[row][col] === PIECE_REDBULL) {
     activateClickedBonus(row, col);
     return;
   }
 
-  if (selectedCell === null) { selectedCell = { row, col }; hintCells = []; render(); return; }
-  const { row: sr, col: sc } = selectedCell;
-  if (sr === row && sc === col) { selectedCell = null; render(); return; }
-  const dr = Math.abs(sr - row), dc = Math.abs(sc - col);
-  if ((dr === 1 && dc === 0) || (dr === 0 && dc === 1)) makeMove(sr, sc, row, col);
-  else { selectedCell = { row, col }; render(); }
-});
+  // Начало drag
+  dragState = {
+    startRow: row, startCol: col,
+    startX: px, startY: py,
+    currentX: px, currentY: py,
+    active: false, // пока не сдвинули
+  };
+
+  selectedCell = { row, col };
+  hintCells = [];
+  soundSelect();
+  render();
+  e.preventDefault();
+}
+
+function onPointerMove(e) {
+  if (!dragState || isAnimating || gameOver) return;
+  const touches = e.touches || [e];
+  const t = touches[0];
+  const { px, py } = canvasToBoard(t.clientX, t.clientY);
+
+  const dx = px - dragState.startX;
+  const dy = py - dragState.startY;
+
+  // Если сдвинули больше 10px — это drag
+  if (!dragState.active && Math.abs(dx) > 10 && Math.abs(dy) > 10) {
+    dragState.active = true;
+  }
+
+  if (dragState.active) {
+    dragState.currentX = px;
+    dragState.currentY = py;
+    render();
+  }
+  e.preventDefault();
+}
+
+function onPointerUp(e) {
+  if (!dragState || isAnimating || gameOver) return;
+
+  const { startRow, startCol, currentX, currentY } = dragState;
+  const target = canvasToBoard(currentX, currentY);
+  const targetRow = target.row;
+  const targetCol = target.col;
+
+  dragState = null;
+
+  // Если не был drag — просто клик (selection already set)
+  if (!target) { render(); return; }
+
+  // Проверяем соседа
+  const dr = Math.abs(startRow - targetRow);
+  const dc = Math.abs(startCol - targetCol);
+
+  if ((dr === 1 && dc === 0) || (dr === 0 && dc === 1)) {
+    makeMove(startRow, startCol, targetRow, targetCol);
+  } else {
+    // Клик на ту же клетку — снять выделение
+    if (startRow === targetRow && startCol === targetCol) {
+      selectedCell = null;
+    }
+    render();
+  }
+}
+
+// Mouse events
+canvas.addEventListener('mousedown', onPointerDown);
+document.addEventListener('mousemove', onPointerMove);
+document.addEventListener('mouseup', onPointerUp);
+
+// Touch events (preventDefault to stop scrolling)
+canvas.addEventListener('touchstart', onPointerDown, { passive: false });
+canvas.addEventListener('touchmove', onPointerMove, { passive: false });
+canvas.addEventListener('touchend', onPointerUp, { passive: false });
 
 // ─── КНОПКИ ──────────────────────────────────────────────
 document.getElementById('resetBtn')?.addEventListener('click', () => {
@@ -933,6 +1158,7 @@ document.getElementById('resetBtn')?.addEventListener('click', () => {
   score = 0;
   goalProgress = 0;
   monsterCount = 0;
+  maxComboThisLevel = 0;
   startLevel();
 });
 
@@ -952,6 +1178,7 @@ document.getElementById('shuffleBtn')?.addEventListener('click', async () => {
   isAnimating = true;
   selectedCell = null;
   hintCells = [];
+  dragState = null;
   shuffleBoard();
   render();
   await delay(200);
@@ -965,9 +1192,11 @@ async function init() {
   await preloadAllSVGs();
   updateLegend();
   await startGame();
+  // Continuous pulse animation for bonuses (throttled on mobile)
+  const pulseInterval = isMobile ? 100 : 50;
   setInterval(() => {
-    if (!isAnimating && !gameOver) render();
-  }, 50);
+    if (!isAnimating && !gameOver && !dragState?.active) render();
+  }, pulseInterval);
 }
 
 init().catch(err => console.error('Ошибка инициализации:', err));
