@@ -1,6 +1,7 @@
 /* ========================================================
    🚗 CarCrush — Match-3 Game
    Touch & Mouse support + 5 Levels + Sound
+   Optimized with offscreen canvas caching
    ======================================================== */
 
 // ─── КОНСТАНТЫ ───────────────────────────────────────────
@@ -15,9 +16,9 @@ const PIECE_REDBULL  = 8;
 const PIECE_COUNT    = 7;
 
 const isMobile = window.innerWidth <= 600 || navigator.maxTouchPoints > 0;
-const DROP_DURATION = isMobile ? 120 : 200;
-const FALL_DURATION = isMobile ? 200 : 350;
-const SWAP_DURATION = isMobile ? 80 : 130;
+const DROP_DURATION = isMobile ? 150 : 200;
+const FALL_DURATION = isMobile ? 250 : 350;
+const SWAP_DURATION = isMobile ? 100 : 130;
 
 // ─── ЛОГОТИПЫ БРЕНДОВ ────────────────────────────────────
 const BRAND_TYPES = [
@@ -112,7 +113,6 @@ let selectedCell = null;
 let isAnimating = false;
 let hintCells = [];
 
-// Drag state
 let dragStartRow = -1;
 let dragStartCol = -1;
 let isDragging = false;
@@ -120,10 +120,11 @@ let isDragging = false;
 let carTypes = BRAND_TYPES;
 let carImages = [];
 let bonusImages = {};
+let pieceCache = {};      // type → offscreen canvas
 
 // DOM
 const canvas = document.getElementById('gameCanvas');
-const ctx = canvas.getContext('2d');
+const ctx = canvas.getContext('2d', { alpha: false });
 const scoreEl  = document.getElementById('score');
 const movesEl  = document.getElementById('moves');
 const comboEl  = document.getElementById('combo');
@@ -159,7 +160,67 @@ function preloadAllSVGs() {
       img.src = path;
     });
   });
-  return Promise.all([...typePromises, ...bonusPromises]);
+  return Promise.all([...typePromises, ...bonusPromises]).then(buildPieceCache);
+}
+
+function buildPieceCache() {
+  const size = CELL_SIZE - 4;
+  pieceCache = {};
+
+  // Cache regular pieces
+  carTypes.forEach((car, type) => {
+    const c = document.createElement('canvas');
+    c.width = size;
+    c.height = size;
+    const cCtx = c.getContext('2d', { alpha: false });
+
+    const cx = size / 2, cy = size / 2, r = size / 2 - 1;
+    const grad = cCtx.createRadialGradient(cx - 4, cy - 4, 2, cx, cy, r);
+    grad.addColorStop(0, car.light);
+    grad.addColorStop(1, car.fill);
+    cCtx.beginPath(); cCtx.arc(cx, cy, r, 0, Math.PI * 2);
+    cCtx.fillStyle = grad; cCtx.fill();
+    cCtx.strokeStyle = 'rgba(255,255,255,0.12)'; cCtx.lineWidth = 1.5; cCtx.stroke();
+
+    const img = carImages[type];
+    if (img) {
+      cCtx.save(); cCtx.beginPath(); cCtx.arc(cx, cy, r - 1, 0, Math.PI * 2); cCtx.clip();
+      const s = (size - 10) / Math.max(img.width, img.height);
+      cCtx.drawImage(img, cx - (img.width * s) / 2, cy - (img.height * s) / 2, img.width * s, img.height * s);
+      cCtx.restore();
+    }
+    pieceCache[type] = c;
+  });
+
+  // Cache bonus pieces
+  const bonusColors = {
+    [PIECE_MONSTER]: { fill: '#00cc44', light: '#66ff99' },
+    [PIECE_REDBULL]: { fill: '#cc0000', light: '#ff4444' },
+  };
+  [PIECE_MONSTER, PIECE_REDBULL].forEach(type => {
+    const c = document.createElement('canvas');
+    c.width = size;
+    c.height = size;
+    const cCtx = c.getContext('2d', { alpha: false });
+
+    const cx = size / 2, cy = size / 2, r = size / 2 - 1;
+    const bc = bonusColors[type];
+    const grad = cCtx.createRadialGradient(cx - 4, cy - 4, 2, cx, cy, r);
+    grad.addColorStop(0, bc.light);
+    grad.addColorStop(1, bc.fill);
+    cCtx.beginPath(); cCtx.arc(cx, cy, r, 0, Math.PI * 2);
+    cCtx.fillStyle = grad; cCtx.fill();
+    cCtx.strokeStyle = 'rgba(255,255,255,0.4)'; cCtx.lineWidth = 2; cCtx.stroke();
+
+    const img = bonusImages[type];
+    if (img) {
+      cCtx.save(); cCtx.beginPath(); cCtx.arc(cx, cy, r - 1, 0, Math.PI * 2); cCtx.clip();
+      const s = (size - 8) / Math.max(img.width, img.height);
+      cCtx.drawImage(img, cx - (img.width * s) / 2, cy - (img.height * s) / 2, img.width * s, img.height * s);
+      cCtx.restore();
+    }
+    pieceCache[type] = c;
+  });
 }
 
 // ─── ДОСКА ───────────────────────────────────────────────
@@ -304,7 +365,6 @@ function generateNewCars() {
 }
 
 // ─── ХОДЫ ────────────────────────────────────────────────
-
 function swap(r1, c1, r2, c2) {
   const tmp = board[r1][c1];
   board[r1][c1] = board[r2][c2];
@@ -664,11 +724,7 @@ function animateBonusEffect(row, col, type) {
     const duration = 300;
     function frame(t) {
       const p = Math.min((t - start) / duration, 1);
-      ctx.clearRect(0, 0, 480, 480);
-      drawGrid();
-      for (let r = 0; r < ROWS; r++)
-        for (let c = 0; c < COLS; c++)
-          if (board[r][c] !== -1) drawCar(ctx, c * CELL_SIZE + CELL_SIZE / 2, r * CELL_SIZE + CELL_SIZE / 2, board[r][c], CELL_SIZE - 4);
+      render();
       const cx = col * CELL_SIZE + CELL_SIZE / 2;
       const cy = row * CELL_SIZE + CELL_SIZE / 2;
       const radius = type === PIECE_REDBULL ? CELL_SIZE * 1.5 * p : CELL_SIZE * 2 * Math.max(0, p - 0.2);
@@ -686,50 +742,8 @@ function animateBonusEffect(row, col, type) {
 }
 
 // ============================================================
-//   РИСОВАНИЕ
+//   РИСОВАНИЕ (с кэшированием)
 // ============================================================
-
-function drawCar(ctx, x, y, type, size) {
-  if (type >= 0 && type < PIECE_COUNT) {
-    const car = carTypes[type];
-    if (!car) return;
-    const grad = ctx.createRadialGradient(x - 4, y - 4, 2, x, y, size / 2 - 1);
-    grad.addColorStop(0, car.light);
-    grad.addColorStop(1, car.fill);
-    ctx.beginPath(); ctx.arc(x, y, size / 2 - 2, 0, Math.PI * 2);
-    ctx.fillStyle = grad; ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.lineWidth = 1.5; ctx.stroke();
-    const img = carImages[type];
-    if (img) {
-      ctx.save(); ctx.beginPath();
-      ctx.arc(x, y, size / 2 - 3, 0, Math.PI * 2); ctx.clip();
-      const s = (size - 10) / Math.max(img.width, img.height);
-      ctx.drawImage(img, x - (img.width * s) / 2, y - (img.height * s) / 2, img.width * s, img.height * s);
-      ctx.restore();
-    }
-    return;
-  }
-  const bonusColors = {
-    [PIECE_MONSTER]: { fill: '#00cc44', light: '#66ff99' },
-    [PIECE_REDBULL]: { fill: '#cc0000', light: '#ff4444' },
-  };
-  const bc = bonusColors[type] || { fill: '#888', light: '#bbb' };
-  ctx.save();
-  const grad = ctx.createRadialGradient(x - 4, y - 4, 2, x, y, size / 2);
-  grad.addColorStop(0, bc.light); grad.addColorStop(1, bc.fill);
-  ctx.beginPath(); ctx.arc(x, y, size / 2 - 1, 0, Math.PI * 2);
-  ctx.fillStyle = grad; ctx.fill();
-  ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.lineWidth = 2; ctx.stroke();
-  ctx.restore();
-  const img = bonusImages[type];
-  if (img) {
-    ctx.save(); ctx.beginPath();
-    ctx.arc(x, y, size / 2 - 3, 0, Math.PI * 2); ctx.clip();
-    const s = (size - 8) / Math.max(img.width, img.height);
-    ctx.drawImage(img, x - (img.width * s) / 2, y - (img.height * s) / 2, img.width * s, img.height * s);
-    ctx.restore();
-  }
-}
 
 function drawGrid() {
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)'; ctx.lineWidth = 1;
@@ -737,26 +751,45 @@ function drawGrid() {
   for (let i = 0; i <= COLS; i++) { ctx.beginPath(); ctx.moveTo(i * CELL_SIZE, 0); ctx.lineTo(i * CELL_SIZE, 480); ctx.stroke(); }
 }
 
+function drawPieceCached(ctx, x, y, type, size) {
+  const cache = pieceCache[type];
+  if (cache) {
+    ctx.drawImage(cache, x - size / 2, y - size / 2, size, size);
+  }
+}
+
 function render() {
   ctx.clearRect(0, 0, 480, 480);
   drawGrid();
   drawSelectionAndHints();
-  for (let r = 0; r < ROWS; r++)
-    for (let c = 0; c < COLS; c++)
-      if (board[r][c] !== -1) drawCar(ctx, c * CELL_SIZE + CELL_SIZE / 2, r * CELL_SIZE + CELL_SIZE / 2, board[r][c], CELL_SIZE - 4);
+  const half = CELL_SIZE / 2;
+  const size = CELL_SIZE - 4;
+  for (let r = 0; r < ROWS; r++) {
+    const ry = r * CELL_SIZE;
+    for (let c = 0; c < COLS; c++) {
+      const type = board[r][c];
+      if (type !== -1) {
+        const cx = c * CELL_SIZE + half, cy = ry + half;
+        drawPieceCached(ctx, cx, cy, type, size);
+      }
+    }
+  }
 }
 
 function renderEmptyCells() {
   ctx.clearRect(0, 0, 480, 480);
   drawGrid();
+  const half = CELL_SIZE / 2;
+  const size = CELL_SIZE - 4;
   for (let r = 0; r < ROWS; r++) {
+    const ry = r * CELL_SIZE;
     for (let c = 0; c < COLS; c++) {
       if (board[r][c] === -1) {
         ctx.fillStyle = 'rgba(255, 255, 255, 0.03)';
-        ctx.fillRect(c * CELL_SIZE + 2, r * CELL_SIZE + 2, CELL_SIZE - 4, CELL_SIZE - 4);
+        ctx.fillRect(c * CELL_SIZE + 2, ry + 2, CELL_SIZE - 4, CELL_SIZE - 4);
         continue;
       }
-      drawCar(ctx, c * CELL_SIZE + CELL_SIZE / 2, r * CELL_SIZE + CELL_SIZE / 2, board[r][c], CELL_SIZE - 4);
+      drawPieceCached(ctx, c * CELL_SIZE + half, ry + half, board[r][c], size);
     }
   }
 }
@@ -765,32 +798,35 @@ function renderMatchHighlight(cells, points) {
   ctx.clearRect(0, 0, 480, 480);
   drawGrid();
   const matchSet = new Set(cells.map(c => `${c.row},${c.col}`));
+  const half = CELL_SIZE / 2;
+  const size = CELL_SIZE - 4;
   for (let r = 0; r < ROWS; r++) {
+    const ry = r * CELL_SIZE;
     for (let c = 0; c < COLS; c++) {
       const type = board[r][c];
       if (type === -1) continue;
-      const cx = c * CELL_SIZE + CELL_SIZE / 2, cy = r * CELL_SIZE + CELL_SIZE / 2;
+      const cx = c * CELL_SIZE + half, cy = ry + half;
       if (matchSet.has(`${r},${c}`)) {
         ctx.save();
-        ctx.shadowColor = (type < PIECE_COUNT ? carTypes[type]?.light : '#ffd200') || '#ffd200';
-        ctx.shadowBlur = 15;
-        drawCar(ctx, cx, cy, type, CELL_SIZE - 4);
+        ctx.globalAlpha = 0.9;
+        drawPieceCached(ctx, cx, cy, type, size);
         ctx.restore();
-        ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.arc(cx, cy, CELL_SIZE / 2 - 3, 0, Math.PI * 2); ctx.stroke();
-      } else drawCar(ctx, cx, cy, type, CELL_SIZE - 4);
+        ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(cx, cy, CELL_SIZE / 2 - 2, 0, Math.PI * 2); ctx.stroke();
+      } else {
+        drawPieceCached(ctx, cx, cy, type, size);
+      }
     }
   }
   const avgRow = cells.reduce((s, c) => s + c.row, 0) / cells.length;
   const avgCol = cells.reduce((s, c) => s + c.col, 0) / cells.length;
   ctx.save();
-  ctx.font = 'bold 28px "Segoe UI", sans-serif';
+  ctx.font = 'bold 26px "Segoe UI", sans-serif';
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = 12;
-  ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = 4;
-  ctx.strokeText(`+${points}`, avgCol * CELL_SIZE + CELL_SIZE / 2, avgRow * CELL_SIZE + CELL_SIZE / 2);
+  ctx.strokeStyle = 'rgba(0,0,0,0.7)'; ctx.lineWidth = 3;
+  ctx.strokeText(`+${points}`, avgCol * CELL_SIZE + half, avgRow * CELL_SIZE + half);
   ctx.fillStyle = '#ffd200';
-  ctx.fillText(`+${points}`, avgCol * CELL_SIZE + CELL_SIZE / 2, avgRow * CELL_SIZE + CELL_SIZE / 2);
+  ctx.fillText(`+${points}`, avgCol * CELL_SIZE + half, avgRow * CELL_SIZE + half);
   ctx.restore();
 }
 
@@ -816,14 +852,18 @@ function renderAnimFrame(anims, excludePositions) {
   const excluded = excludePositions || new Set(anims.map(a => `${a.col},${Math.round(a.y / CELL_SIZE - 0.5)}`));
   ctx.clearRect(0, 0, 480, 480);
   drawGrid();
-  for (let r = 0; r < ROWS; r++)
+  const half = CELL_SIZE / 2;
+  const size = CELL_SIZE - 4;
+  for (let r = 0; r < ROWS; r++) {
+    const ry = r * CELL_SIZE;
     for (let c = 0; c < COLS; c++) {
       if (board[r][c] === -1) continue;
       if (excluded.has(`${c},${r}`)) continue;
-      drawCar(ctx, c * CELL_SIZE + CELL_SIZE / 2, r * CELL_SIZE + CELL_SIZE / 2, board[r][c], CELL_SIZE - 4);
+      drawPieceCached(ctx, c * CELL_SIZE + half, ry + half, board[r][c], size);
     }
+  }
   for (const a of anims) {
-    drawCar(ctx, a.x, a.y, a.type, CELL_SIZE - 4);
+    drawPieceCached(ctx, a.x, a.y, a.type, size);
   }
 }
 
@@ -930,7 +970,6 @@ function getCellFromEvent(e) {
   return canvasToBoard(t.clientX, t.clientY);
 }
 
-// Unified interaction — works with mouse, touch, and laptop touchscreens
 let lastTouchTime = 0;
 
 function handleStart(e, isTouch) {
@@ -940,7 +979,6 @@ function handleStart(e, isTouch) {
   const { row, col } = canvasToBoard(pt.clientX, pt.clientY);
   if (row < 0 || row >= ROWS || col < 0 || col >= COLS) return;
 
-  // Bonus tap — activate immediately
   if (board[row][col] === PIECE_MONSTER || board[row][col] === PIECE_REDBULL) {
     activateClickedBonus(row, col);
     return;
@@ -950,7 +988,6 @@ function handleStart(e, isTouch) {
   dragStartCol = col;
   isDragging = false;
 
-  // On touch: select IMMEDIATELY for instant feedback
   if (isTouch) {
     selectedCell = { row, col };
     hintCells = [];
@@ -996,21 +1033,18 @@ function handleEnd(e, isTouch) {
   }
 
   if (wasDragging) {
-    // Drag ended — swap if adjacent
     const dr = Math.abs(row - startR);
     const dc = Math.abs(col - startC);
     if ((dr === 1 && dc === 0) || (dr === 0 && dc === 1)) {
       makeMove(startR, startC, row, col);
     }
   } else {
-    // Simple tap — select or swap
     const cellType = board[row][col];
     if (cellType === PIECE_MONSTER || cellType === PIECE_REDBULL) {
       activateClickedBonus(row, col);
       return;
     }
     if (selectedCell && selectedCell.row === row && selectedCell.col === col) {
-      // Same cell tapped again — deselect
       selectedCell = null;
     } else if (selectedCell) {
       const dr = Math.abs(selectedCell.row - row);
