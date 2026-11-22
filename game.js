@@ -444,18 +444,30 @@ async function processMatches() {
     }
     monsterCount += monstersCreated;
 
-    // Update goal progress
-    if (level.goalType === 'brand') goalProgress += brandCollected; // will fix below
-    if (level.goalType === 'score') goalProgress = score;
-    else if (level.goalType === 'monster') goalProgress = monsterCount;
-    else if (level.goalType === 'combo') {
-      if (combo > maxComboThisLevel) maxComboThisLevel = combo;
-      goalProgress = maxComboThisLevel;
+    // Count brand pieces collected for 'brand' goal type
+    let brandCollected = 0;
+    if (level.goalType === 'brand') {
+      for (const g of groups) {
+        if (g.type === level.brandIndex) {
+          for (const cl of g.cells) {
+            if (board[cl.row][cl.col] === level.brandIndex) brandCollected++;
+          }
+        }
+      }
     }
 
     const basePoints = cells.length * 10;
     const comboPoints = Math.floor(basePoints * combo);
     score += comboPoints;
+
+    // Update goal progress
+    if (level.goalType === 'brand') goalProgress += brandCollected;
+    else if (level.goalType === 'score') goalProgress = score;
+    else if (level.goalType === 'monster') goalProgress = monsterCount;
+    else if (level.goalType === 'combo') {
+      if (combo > maxComboThisLevel) maxComboThisLevel = combo;
+      goalProgress = maxComboThisLevel;
+    }
 
     // Update progress display
     updateStats();
