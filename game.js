@@ -1134,9 +1134,6 @@ async function init() {
   await preloadAllSVGs();
   updateLegend();
   await startGame();
-  setInterval(() => {
-    if (!isAnimating && !gameOver && !isDragging) render();
-  }, isMobile ? 100 : 50);
 }
 
 init().catch(err => console.error('Ошибка инициализации:', err));
