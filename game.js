@@ -2,6 +2,7 @@
    🚗 CarCrush — Match-3 Game
    Touch & Mouse support + 5 Levels + Sound
    Optimized with offscreen canvas caching
+   Connected components bonus (5+ connected = Red Bull)
    ======================================================== */
 
 // ─── КОНСТАНТЫ ───────────────────────────────────────────
@@ -167,7 +168,6 @@ function buildPieceCache() {
   const size = CELL_SIZE - 4;
   pieceCache = {};
 
-  // Cache regular pieces
   carTypes.forEach((car, type) => {
     const c = document.createElement('canvas');
     c.width = size;
@@ -192,7 +192,6 @@ function buildPieceCache() {
     pieceCache[type] = c;
   });
 
-  // Cache bonus pieces
   const bonusColors = {
     [PIECE_MONSTER]: { fill: '#00cc44', light: '#66ff99' },
     [PIECE_REDBULL]: { fill: '#cc0000', light: '#ff4444' },
@@ -247,12 +246,13 @@ function wouldMatch(row, col, type) {
   return false;
 }
 
-// ─── ПОИСК СОВПАДЕНИЙ ────────────────────────────────────
+// ─── ПОИСК СОВПАДЕНИЙ (прямые линии) ─────────────────────
 
 function findMatchesWithDetails() {
   const matched = new Set();
   const groups = [];
 
+  // Горизонталь
   for (let r = 0; r < ROWS; r++) {
     let count = 1;
     for (let c = 1; c <= COLS; c++) {
@@ -269,6 +269,7 @@ function findMatchesWithDetails() {
     }
   }
 
+  // Вертикаль
   for (let c = 0; c < COLS; c++) {
     let count = 1;
     for (let r = 1; r <= ROWS; r++) {
@@ -284,6 +285,7 @@ function findMatchesWithDetails() {
       }
     }
   }
+
   return { matched, groups };
 }
 
@@ -291,21 +293,71 @@ function parseMatches(matchedSet) {
   return [...matchedSet].map(k => { const [r, c] = k.split(',').map(Number); return { row: r, col: c }; });
 }
 
+// ─── СВЯЗНЫЕ КОМПОНЕНТЫ (5+ соединенных = Red Bull) ───────
+
+function findConnectedComponents(matched) {
+  const visited = new Set();
+  const components = [];
+
+  for (const key of matched) {
+    if (visited.has(key)) continue;
+
+    // BFS от этой ячейки
+    const component = [];
+    const queue = [key];
+    visited.add(key);
+
+    while (queue.length > 0) {
+      const cur = queue.shift();
+      const [cr, cc] = cur.split(',').map(Number);
+      component.push({ row: cr, col: cc });
+
+      // Проверяем 4 соседа
+      const neighbors = [
+        `${cr - 1},${cc}`,
+        `${cr + 1},${cc}`,
+        `${cr},${cc - 1}`,
+        `${cr},${cc + 1}`,
+      ];
+      for (const nk of neighbors) {
+        if (matched.has(nk) && !visited.has(nk)) {
+          visited.add(nk);
+          queue.push(nk);
+        }
+      }
+    }
+
+    components.push(component);
+  }
+
+  return components;
+}
+
 // ─── БОНУСНЫЕ ФИШКИ ──────────────────────────────────────
 
-function calcBonuses(groups) {
-  const bonusMap = new Map();
-  for (const g of groups) {
-    if (g.size >= 5) {
-      const idx = Math.floor(g.cells.length / 2);
-      const c = g.cells[idx];
+function calcBonuses(groups, matched, components) {
+  const bonusMap = new Map(); // "r,c" → pieceType
+
+  // Сначала Red Bull для компонентов >= 5
+  for (const comp of components) {
+    if (comp.length >= 5) {
+      // Центр компонента — средняя ячейка
+      const mid = Math.floor(comp.length / 2);
+      const c = comp[mid];
       bonusMap.set(`${c.row},${c.col}`, PIECE_REDBULL);
-    } else if (g.size === 4) {
-      const idx = Math.floor(g.cells.length / 2);
-      const c = g.cells[idx];
-      if (!bonusMap.has(`${c.row},${c.col}`)) bonusMap.set(`${c.row},${c.col}`, PIECE_MONSTER);
     }
   }
+
+  // Затем Monster для прямых линий из 4 (если еще не Red Bull)
+  for (const g of groups) {
+    if (g.size === 4) {
+      const idx = Math.floor(g.cells.length / 2);
+      const c = g.cells[idx];
+      const key = `${c.row},${c.col}`;
+      if (!bonusMap.has(key)) bonusMap.set(key, PIECE_MONSTER);
+    }
+  }
+
   return bonusMap;
 }
 
@@ -418,31 +470,24 @@ async function processMatches() {
     const cells = parseMatches(matched);
     totalRemoved += cells.length;
 
-    const bonuses = calcBonuses(groups);
+    // Связные компоненты
+    const components = findConnectedComponents(matched);
+    const bonuses = calcBonuses(groups, matched, components);
     const level = LEVELS[currentLevel];
 
     let monstersCreated = 0;
+    let redbullsCreated = 0;
     for (const [key, pieceType] of bonuses) {
       if (pieceType === PIECE_MONSTER) monstersCreated++;
+      else if (pieceType === PIECE_REDBULL) redbullsCreated++;
     }
     monsterCount += monstersCreated;
-
-    let brandCollected = 0;
-    if (level.goalType === 'brand') {
-      for (const g of groups) {
-        if (g.type === level.brandIndex) {
-          for (const cl of g.cells) {
-            if (board[cl.row][cl.col] === level.brandIndex) brandCollected++;
-          }
-        }
-      }
-    }
 
     const basePoints = cells.length * 10;
     const comboPoints = Math.floor(basePoints * combo);
     score += comboPoints;
 
-    if (level.goalType === 'brand') goalProgress += brandCollected;
+    if (level.goalType === 'brand') goalProgress += cells.length;
     else if (level.goalType === 'score') goalProgress = score;
     else if (level.goalType === 'monster') goalProgress = monsterCount;
     else if (level.goalType === 'combo') {
