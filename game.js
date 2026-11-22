@@ -937,6 +937,7 @@ function getCellFromEvent(e) {
 
 // Unified interaction — works with mouse, touch, and laptop touchscreens
 let lastTouchTime = 0;
+let touchSelectRendered = false;
 
 function handleStart(e, isTouch) {
   if (isAnimating || gameOver) return;
@@ -954,8 +955,17 @@ function handleStart(e, isTouch) {
   dragStartRow = row;
   dragStartCol = col;
   isDragging = false;
-  // Don't select yet — wait for end to decide click vs drag
-  if (!isTouch) e.preventDefault();
+  touchSelectRendered = false;
+
+  // On touch: select IMMEDIATELY for instant feedback
+  if (isTouch) {
+    selectedCell = { row, col };
+    hintCells = [];
+    soundSelect();
+    render();
+    touchSelectRendered = true;
+    e.preventDefault();
+  }
 }
 
 function handleMove(e, isTouch) {
@@ -970,8 +980,7 @@ function handleMove(e, isTouch) {
   const dy = Math.abs(row - dragStartRow);
   if (dx > 10 || dy > 10) {
     isDragging = true;
-    selectedCell = { row: dragStartRow, col: dragStartCol };
-    hintCells = [];
+    // Don't re-render on every move frame to avoid flicker
     render();
   }
 }
@@ -1005,26 +1014,51 @@ function handleEnd(e, isTouch) {
     }
   } else {
     // Simple tap — select or swap
-    const cellType = board[row][col];
-    if (cellType === PIECE_MONSTER || cellType === PIECE_REDBULL) {
-      activateClickedBonus(row, col);
-      return;
-    }
-    if (selectedCell && selectedCell.row === row && selectedCell.col === col) {
-      selectedCell = null;
-    } else if (selectedCell) {
-      const dr = Math.abs(selectedCell.row - row);
-      const dc = Math.abs(selectedCell.col - col);
-      if ((dr === 1 && dc === 0) || (dr === 0 && dc === 1)) {
-        makeMove(selectedCell.row, selectedCell.col, row, col);
+    // For touch, cell is already selected from handleStart, so just check swap
+    if (isTouch && touchSelectRendered) {
+      const cellType = board[row][col];
+      if (cellType === PIECE_MONSTER || cellType === PIECE_REDBULL) {
+        activateClickedBonus(row, col);
+        return;
+      }
+      if (selectedCell && selectedCell.row === row && selectedCell.col === col) {
+        // Same cell tapped again — deselect
+        selectedCell = null;
+      } else if (selectedCell) {
+        const dr = Math.abs(selectedCell.row - row);
+        const dc = Math.abs(selectedCell.col - col);
+        if ((dr === 1 && dc === 0) || (dr === 0 && dc === 1)) {
+          makeMove(selectedCell.row, selectedCell.col, row, col);
+        } else {
+          selectedCell = { row, col };
+        }
+      }
+      soundSelect();
+      render();
+      touchSelectRendered = false;
+    } else {
+      // Mouse click path
+      const cellType = board[row][col];
+      if (cellType === PIECE_MONSTER || cellType === PIECE_REDBULL) {
+        activateClickedBonus(row, col);
+        return;
+      }
+      if (selectedCell && selectedCell.row === row && selectedCell.col === col) {
+        selectedCell = null;
+      } else if (selectedCell) {
+        const dr = Math.abs(selectedCell.row - row);
+        const dc = Math.abs(selectedCell.col - col);
+        if ((dr === 1 && dc === 0) || (dr === 0 && dc === 1)) {
+          makeMove(selectedCell.row, selectedCell.col, row, col);
+        } else {
+          selectedCell = { row, col };
+        }
       } else {
         selectedCell = { row, col };
       }
-    } else {
-      selectedCell = { row, col };
+      soundSelect();
+      render();
     }
-    soundSelect();
-    render();
   }
 }
 
@@ -1041,14 +1075,21 @@ canvas.addEventListener('mouseleave', () => {
 // Touch events
 canvas.addEventListener('touchstart', (e) => {
   const now = Date.now();
-  if (now - lastTouchTime < 300) { lastTouchTime = now; return; }
+  if (now - lastTouchTime < 200) { lastTouchTime = now; return; }
   lastTouchTime = now;
+  e.preventDefault();
   handleStart(e, true);
 }, { passive: false });
 
-canvas.addEventListener('touchmove', (e) => handleMove(e, true), { passive: false });
+canvas.addEventListener('touchmove', (e) => {
+  e.preventDefault();
+  handleMove(e, true);
+}, { passive: false });
 
-canvas.addEventListener('touchend', (e) => handleEnd(e, true), { passive: false });
+canvas.addEventListener('touchend', (e) => {
+  e.preventDefault();
+  handleEnd(e, true);
+}, { passive: false });
 
 // ─── КНОПКИ ──────────────────────────────────────────────
 document.getElementById('resetBtn')?.addEventListener('click', () => {

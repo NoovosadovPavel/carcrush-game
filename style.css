@@ -164,6 +164,7 @@ h1 {
   height: 480px;
   border-radius: 16px;
   cursor: pointer;
+  touch-action: none;
 }
 
 /* === ОВЕРЛЕЙ УРОВНЯ === */
