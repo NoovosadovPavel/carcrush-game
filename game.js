@@ -935,7 +935,7 @@ function getCellFromEvent(e) {
   return canvasToBoard(t.clientX, t.clientY);
 }
 
-// Mouse events
+// Mouse events — click to select, drag to swap
 canvas.addEventListener('mousedown', (e) => {
   if (isAnimating || gameOver) return;
   if (audioUnlocked === false) { initAudio(); audioUnlocked = true; }
@@ -945,69 +945,77 @@ canvas.addEventListener('mousedown', (e) => {
     activateClickedBonus(row, col);
     return;
   }
+  // Record start position only — don't select yet (avoid instant deselect on mouseup)
   dragStartRow = row;
   dragStartCol = col;
   isDragging = false;
-  selectedCell = { row, col };
-  hintCells = [];
-  soundSelect();
-  render();
   e.preventDefault();
 });
 
 canvas.addEventListener('mousemove', (e) => {
-  if (!isDragging || isAnimating || gameOver) return;
+  if (isAnimating || gameOver) return;
+  if (dragStartRow === -1) return; // no mousedown yet
   const { row, col } = getCellFromEvent(e);
   if (row < 0 || row >= ROWS || col < 0 || col >= COLS) return;
   const dx = col - dragStartCol;
   const dy = row - dragStartRow;
   if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
     isDragging = true;
+    selectedCell = { row: dragStartRow, col: dragStartCol };
+    hintCells = [];
+    render();
   }
-  if (isDragging) render();
   e.preventDefault();
 });
 
 canvas.addEventListener('mouseup', (e) => {
-  if (!isDragging || isAnimating || gameOver) {
-    // Simple click without drag - toggle selection
-    if (e.type === 'mouseup') {
-      const { row, col } = getCellFromEvent(e);
-      if (row >= 0 && row < ROWS && col >= 0 && col < COLS && board[row][col] !== PIECE_MONSTER && board[row][col] !== PIECE_REDBULL) {
-        if (selectedCell && selectedCell.row === row && selectedCell.col === col) {
-          selectedCell = null;
-        } else if (selectedCell) {
-          const dr = Math.abs(selectedCell.row - row);
-          const dc = Math.abs(selectedCell.col - col);
-          if ((dr === 1 && dc === 0) || (dr === 0 && dc === 1)) {
-            makeMove(selectedCell.row, selectedCell.col, row, col);
-          } else {
-            selectedCell = { row, col };
-          }
-        } else {
-          selectedCell = { row, col };
-        }
-        render();
-      }
-    }
+  if (isAnimating || gameOver) return;
+  if (dragStartRow === -1) return;
+
+  const { row, col } = getCellFromEvent(e);
+  if (row < 0 || row >= ROWS || col < 0 || col >= COLS) {
+    dragStartRow = -1;
+    dragStartCol = -1;
+    isDragging = false;
+    render();
     return;
   }
 
-  const target = getCellFromEvent(e);
-  if (!target) { render(); return; }
-  const targetRow = target.row;
-  const targetCol = target.col;
-
-  isDragging = false;
+  const startR = dragStartRow;
+  const startC = dragStartCol;
+  const wasDragging = isDragging;
   dragStartRow = -1;
   dragStartCol = -1;
+  isDragging = false;
 
-  const dr = Math.abs(dragStartRow - targetRow);
-  const dc = Math.abs(dragStartCol - targetCol);
-
-  if ((dr === 1 && dc === 0) || (dr === 0 && dc === 1)) {
-    makeMove(dragStartRow, dragStartCol, targetRow, targetCol);
+  if (wasDragging) {
+    // Drag ended — check if landed on adjacent cell
+    const dr = Math.abs(row - startR);
+    const dc = Math.abs(col - startC);
+    if ((dr === 1 && dc === 0) || (dr === 0 && dc === 1)) {
+      makeMove(startR, startC, row, col);
+    }
   } else {
+    // Simple click — select or swap
+    const cellType = board[row][col];
+    if (cellType === PIECE_MONSTER || cellType === PIECE_REDBULL) {
+      activateClickedBonus(row, col);
+      return;
+    }
+    if (selectedCell && selectedCell.row === row && selectedCell.col === col) {
+      selectedCell = null;
+    } else if (selectedCell) {
+      const dr = Math.abs(selectedCell.row - row);
+      const dc = Math.abs(selectedCell.col - col);
+      if ((dr === 1 && dc === 0) || (dr === 0 && dc === 1)) {
+        makeMove(selectedCell.row, selectedCell.col, row, col);
+      } else {
+        selectedCell = { row, col };
+      }
+    } else {
+      selectedCell = { row, col };
+    }
+    soundSelect();
     render();
   }
 });
@@ -1026,41 +1034,78 @@ canvas.addEventListener('touchstart', (e) => {
   dragStartRow = row;
   dragStartCol = col;
   isDragging = false;
-  selectedCell = { row, col };
+  selectedCell = null;
   hintCells = [];
   soundSelect();
-  render();
 }, { passive: false });
 
 canvas.addEventListener('touchmove', (e) => {
   e.preventDefault();
-  if (!isDragging || isAnimating || gameOver) return;
+  if (isAnimating || gameOver) return;
+  if (dragStartRow === -1) return;
   const { row, col } = getCellFromEvent(e);
   if (row < 0 || row >= ROWS || col < 0 || col >= COLS) return;
   const dx = col - dragStartCol;
   const dy = row - dragStartRow;
-  if (Math.abs(dx) > 10 || Math.abs(dy) > 10) { isDragging = true; }
-  if (isDragging) render();
+  if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
+    isDragging = true;
+    selectedCell = { row: dragStartRow, col: dragStartCol };
+    hintCells = [];
+    render();
+  }
 }, { passive: false });
 
 canvas.addEventListener('touchend', (e) => {
   e.preventDefault();
-  if (!isDragging || isAnimating || gameOver) return;
+  if (isAnimating || gameOver) return;
+  if (dragStartRow === -1) return;
+
   const target = getCellFromEvent(e);
-  if (!target) { render(); return; }
+  if (!target) {
+    dragStartRow = -1;
+    dragStartCol = -1;
+    isDragging = false;
+    render();
+    return;
+  }
   const targetRow = target.row;
   const targetCol = target.col;
-  isDragging = false;
+
+  const startR = dragStartRow;
+  const startC = dragStartCol;
+  const wasDragging = isDragging;
   dragStartRow = -1;
   dragStartCol = -1;
-  const dr = Math.abs(dragStartRow - targetRow);
-  const dc = Math.abs(dragStartCol - targetCol);
-  if ((dr === 1 && dc === 0) || (dr === 0 && dc === 1)) {
-    makeMove(dragStartRow, dragStartCol, targetRow, targetCol);
+  isDragging = false;
+
+  if (wasDragging) {
+    const dr = Math.abs(targetRow - startR);
+    const dc = Math.abs(targetCol - startC);
+    if ((dr === 1 && dc === 0) || (dr === 0 && dc === 1)) {
+      makeMove(startR, startC, targetRow, targetCol);
+    }
   } else {
+    const cellType = board[targetRow] && board[targetRow][targetCol];
+    if (cellType === PIECE_MONSTER || cellType === PIECE_REDBULL) {
+      activateClickedBonus(targetRow, targetCol);
+      return;
+    }
+    if (selectedCell && selectedCell.row === targetRow && selectedCell.col === targetCol) {
+      selectedCell = null;
+    } else if (selectedCell) {
+      const dr = Math.abs(selectedCell.row - targetRow);
+      const dc = Math.abs(selectedCell.col - targetCol);
+      if ((dr === 1 && dc === 0) || (dr === 0 && dc === 1)) {
+        makeMove(selectedCell.row, selectedCell.col, targetRow, targetCol);
+      } else {
+        selectedCell = { row: targetRow, col: targetCol };
+      }
+    } else {
+      selectedCell = { row: targetRow, col: targetCol };
+    }
     render();
   }
-}, { passive: false });
+});
 
 // ─── КНОПКИ ──────────────────────────────────────────────
 document.getElementById('resetBtn')?.addEventListener('click', () => {
