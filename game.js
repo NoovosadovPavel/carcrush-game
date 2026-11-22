@@ -14,7 +14,6 @@ const PIECE_MONSTER  = 7;
 const PIECE_REDBULL  = 8;
 const PIECE_COUNT    = 7;
 
-// Адаптивные длительности для мобилы
 const isMobile = window.innerWidth <= 600 || navigator.maxTouchPoints > 0;
 const DROP_DURATION = isMobile ? 120 : 200;
 const FALL_DURATION = isMobile ? 200 : 350;
@@ -38,47 +37,11 @@ const BONUS_SVGS = {
 
 // ─── УРОВНИ (5 шт) ──────────────────────────────────────
 const LEVELS = [
-  {
-    num: 1,
-    goalType: 'brand',
-    brandIndex: 2,       // Ferrari
-    brandName: 'Ferrari',
-    target: 12,
-    movesLimit: 20,
-    reward: 'Отличный старт! Ты собрал Ferrari! 🚀',
-  },
-  {
-    num: 2,
-    goalType: 'score',
-    goalName: '500 очков',
-    target: 500,
-    movesLimit: 20,
-    reward: 'Отлично! Продолжай в том же духе! 🔥',
-  },
-  {
-    num: 3,
-    goalType: 'monster',
-    goalName: 'Monster Grafio',
-    target: 2,
-    movesLimit: 25,
-    reward: 'Monster Grafio под контролем! 👹',
-  },
-  {
-    num: 4,
-    goalType: 'combo',
-    goalName: 'комбо x3',
-    target: 3,
-    movesLimit: 25,
-    reward: 'Мастер комбо! Это было впечатляюще! ⚡',
-  },
-  {
-    num: 5,
-    goalType: 'score',
-    goalName: '1000 очков',
-    target: 1000,
-    movesLimit: 30,
-    reward: 'CarCrush покорён! Ты легенда! 👑🏆',
-  },
+  { num: 1, goalType: 'brand', brandIndex: 2, brandName: 'Ferrari', target: 12, movesLimit: 20, reward: 'Отличный старт! Ты собрал Ferrari! 🚀' },
+  { num: 2, goalType: 'score', goalName: '500 очков', target: 500, movesLimit: 20, reward: 'Отлично! Продолжай в том же духе! 🔥' },
+  { num: 3, goalType: 'monster', goalName: 'Monster Grafio', target: 2, movesLimit: 25, reward: 'Monster Grafio под контролем! 👹' },
+  { num: 4, goalType: 'combo', goalName: 'комбо x3', target: 3, movesLimit: 25, reward: 'Мастер комбо! Это было впечатляюще! ⚡' },
+  { num: 5, goalType: 'score', goalName: '1000 очков', target: 1000, movesLimit: 30, reward: 'CarCrush покорён! Ты легенда! 👑🏆' },
 ];
 
 // ─── ЗВУКИ ───────────────────────────────────────────────
@@ -109,39 +72,29 @@ function playTone(freq, duration, type = 'sine', vol = 0.15) {
   } catch(e) {}
 }
 
-function soundSwap() {
-  playTone(600, 0.06, 'sine', 0.08);
-}
-
+function soundSwap() { playTone(600, 0.06, 'sine', 0.08); }
 function soundMatch(count) {
   const base = 800 + count * 100;
   playTone(base, 0.12, 'sine', 0.12);
   setTimeout(() => playTone(base * 1.3, 0.1, 'sine', 0.08), 50);
 }
-
 function soundCombo(level) {
   for (let i = 0; i < Math.min(level, 5); i++) {
     setTimeout(() => playTone(500 + i * 200, 0.1, 'sine', 0.1), i * 60);
   }
 }
-
 function soundBonus() {
   playTone(300, 0.08, 'square', 0.12);
   setTimeout(() => playTone(200, 0.1, 'sawtooth', 0.1), 50);
   setTimeout(() => playTone(400, 0.15, 'square', 0.08), 100);
 }
-
 function soundWin() {
   [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => playTone(f, 0.3, 'sine', 0.12), i * 100));
 }
-
 function soundLose() {
   [400, 350, 300].forEach((f, i) => setTimeout(() => playTone(f, 0.2, 'sine', 0.1), i * 120));
 }
-
-function soundSelect() {
-  playTone(800, 0.04, 'sine', 0.06);
-}
+function soundSelect() { playTone(800, 0.04, 'sine', 0.06); }
 
 // ─── СОСТОЯНИЕ ───────────────────────────────────────────
 let currentLevel = 0;
@@ -159,11 +112,12 @@ let selectedCell = null;
 let isAnimating = false;
 let hintCells = [];
 
-// Drag state for mouse/touch drag
-let dragState = null; // { startRow, startCol, currentRow, currentCol, isOverTarget }
+// Drag state
+let dragStartRow = -1;
+let dragStartCol = -1;
+let isDragging = false;
 
-// ─── ЛОГОТИПЫ ────────────────────────────────────────────
-const carTypes = BRAND_TYPES;
+let carTypes = BRAND_TYPES;
 let carImages = [];
 let bonusImages = {};
 
@@ -193,20 +147,18 @@ function preloadAllSVGs() {
     return new Promise(resolve => {
       const img = new Image();
       img.onload = () => { carImages[idx] = img; resolve(); };
-      img.onerror = resolve;
+      img.onerror = () => { console.warn('SVG load failed:', t.svg); resolve(); };
       img.src = t.svg;
     });
   });
-
   const bonusPromises = Object.entries(BONUS_SVGS).map(([type, path]) => {
     return new Promise(resolve => {
       const img = new Image();
       img.onload = () => { bonusImages[type] = img; resolve(); };
-      img.onerror = resolve;
+      img.onerror = () => { console.warn('Bonus SVG load failed:', path); resolve(); };
       img.src = path;
     });
   });
-
   return Promise.all([...typePromises, ...bonusPromises]);
 }
 
@@ -248,11 +200,7 @@ function findMatchesWithDetails() {
       else {
         if (count >= MIN_MATCH && board[r][c - 1] >= 0 && board[r][c - 1] < PIECE_COUNT) {
           const cells = [];
-          for (let k = 0; k < count; k++) {
-            const cc = c - 1 - k;
-            cells.push({ row: r, col: cc });
-            matched.add(`${r},${cc}`);
-          }
+          for (let k = 0; k < count; k++) { const cc = c - 1 - k; cells.push({ row: r, col: cc }); matched.add(`${r},${cc}`); }
           groups.push({ cells, type: board[r][c - 1], direction: 'h', size: count });
         }
         count = 1;
@@ -268,26 +216,18 @@ function findMatchesWithDetails() {
       else {
         if (count >= MIN_MATCH && board[r - 1][c] >= 0 && board[r - 1][c] < PIECE_COUNT) {
           const cells = [];
-          for (let k = 0; k < count; k++) {
-            const rr = r - 1 - k;
-            cells.push({ row: rr, col: c });
-            matched.add(`${rr},${c}`);
-          }
+          for (let k = 0; k < count; k++) { const rr = r - 1 - k; cells.push({ row: rr, col: c }); matched.add(`${rr},${c}`); }
           groups.push({ cells, type: board[r - 1][c], direction: 'v', size: count });
         }
         count = 1;
       }
     }
   }
-
   return { matched, groups };
 }
 
 function parseMatches(matchedSet) {
-  return [...matchedSet].map(k => {
-    const [r, c] = k.split(',').map(Number);
-    return { row: r, col: c };
-  });
+  return [...matchedSet].map(k => { const [r, c] = k.split(',').map(Number); return { row: r, col: c }; });
 }
 
 // ─── БОНУСНЫЕ ФИШКИ ──────────────────────────────────────
@@ -311,28 +251,19 @@ function calcBonuses(groups) {
 function activateBonus(row, col) {
   const type = board[row][col];
   if (type !== PIECE_MONSTER && type !== PIECE_REDBULL) return [];
-
   if (type === PIECE_MONSTER) {
     const meta = bonusMeta[`${row},${col}`];
     const dir = meta ? meta.dir : 'h';
     const cleared = [];
-    if (dir === 'h') {
-      for (let c = 0; c < COLS; c++)
-        if (board[row][c] !== -1) cleared.push({ row, col: c });
-    } else {
-      for (let r = 0; r < ROWS; r++)
-        if (board[r][col] !== -1) cleared.push({ row: r, col });
-    }
+    if (dir === 'h') { for (let c = 0; c < COLS; c++) if (board[row][c] !== -1) cleared.push({ row, col: c }); }
+    else { for (let r = 0; r < ROWS; r++) if (board[r][col] !== -1) cleared.push({ row: r, col }); }
     return cleared;
   }
-
   if (type === PIECE_REDBULL) {
     const minR = Math.max(0, row - 1), maxR = Math.min(ROWS - 1, row + 1);
     const minC = Math.max(0, col - 1), maxC = Math.min(COLS - 1, col + 1);
     const cleared = [];
-    for (let r = minR; r <= maxR; r++)
-      for (let c = minC; c <= maxC; c++)
-        if (board[r][c] !== -1) cleared.push({ row: r, col: c });
+    for (let r = minR; r <= maxR; r++) for (let c = minC; c <= maxC; c++) if (board[r][c] !== -1) cleared.push({ row: r, col: c });
     return cleared;
   }
   return [];
@@ -344,8 +275,7 @@ function applyGravity() {
   const drops = [];
   for (let c = 0; c < COLS; c++) {
     const cells = [];
-    for (let r = ROWS - 1; r >= 0; r--)
-      if (board[r][c] !== -1) cells.push({ row: r, type: board[r][c] });
+    for (let r = ROWS - 1; r >= 0; r--) if (board[r][c] !== -1) cells.push({ row: r, type: board[r][c] });
     const emptyCount = ROWS - cells.length;
     if (emptyCount === 0) continue;
     for (let i = 0; i < cells.length; i++) {
@@ -363,10 +293,7 @@ function generateNewCars() {
   const newCars = [];
   for (let c = 0; c < COLS; c++) {
     let emptyCount = 0;
-    for (let r = 0; r < ROWS; r++) {
-      if (board[r][c] === -1) emptyCount++;
-      else break;
-    }
+    for (let r = 0; r < ROWS; r++) { if (board[r][c] === -1) emptyCount++; else break; }
     for (let i = 0; i < emptyCount; i++) {
       const type = Math.floor(Math.random() * PIECE_COUNT);
       board[i][c] = type;
@@ -412,10 +339,7 @@ function shuffleBoard() {
   for (let r = 0; r < ROWS; r++)
     for (let c = 0; c < COLS; c++)
       if (board[r][c] >= 0 && board[r][c] < PIECE_COUNT) flat.push(board[r][c]);
-  for (let i = flat.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [flat[i], flat[j]] = [flat[j], flat[i]];
-  }
+  for (let i = flat.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [flat[i], flat[j]] = [flat[j], flat[i]]; }
   let idx = 0;
   for (let r = 0; r < ROWS; r++)
     for (let c = 0; c < COLS; c++)
@@ -437,14 +361,12 @@ async function processMatches() {
     const bonuses = calcBonuses(groups);
     const level = LEVELS[currentLevel];
 
-    // Count Monster creations
     let monstersCreated = 0;
     for (const [key, pieceType] of bonuses) {
       if (pieceType === PIECE_MONSTER) monstersCreated++;
     }
     monsterCount += monstersCreated;
 
-    // Count brand pieces collected for 'brand' goal type
     let brandCollected = 0;
     if (level.goalType === 'brand') {
       for (const g of groups) {
@@ -460,7 +382,6 @@ async function processMatches() {
     const comboPoints = Math.floor(basePoints * combo);
     score += comboPoints;
 
-    // Update goal progress
     if (level.goalType === 'brand') goalProgress += brandCollected;
     else if (level.goalType === 'score') goalProgress = score;
     else if (level.goalType === 'monster') goalProgress = monsterCount;
@@ -469,7 +390,9 @@ async function processMatches() {
       goalProgress = maxComboThisLevel;
     }
 
-    // Update progress display
+    if (combo > 1) soundCombo(combo);
+    else soundMatch(cells.length);
+
     updateStats();
     updateProgress();
 
@@ -507,7 +430,6 @@ async function processMatches() {
     combo++;
     result = findMatchesWithDetails();
 
-    // Проверка прохождения уровня
     if (goalProgress >= level.target) {
       render();
       isAnimating = false;
@@ -524,7 +446,6 @@ async function processMatches() {
     combo = 1;
     comboEl.textContent = 'x1';
   }
-
   return totalRemoved;
 }
 
@@ -535,7 +456,9 @@ async function makeMove(r1, c1, r2, c2) {
   isAnimating = true;
   selectedCell = null;
   hintCells = [];
-  dragState = null;
+  dragStartRow = -1;
+  dragStartCol = -1;
+  isDragging = false;
 
   soundSwap();
   await animateSwap(r1, c1, r2, c2);
@@ -558,7 +481,6 @@ async function makeMove(r1, c1, r2, c2) {
 
   if (gameOver) return true;
 
-  // Проверка лимита ходов
   const level = LEVELS[currentLevel];
   if (moves >= level.movesLimit && !gameOver) {
     if (goalProgress >= level.target) completeLevel(true);
@@ -593,23 +515,11 @@ function completeLevel(won) {
     soundWin();
     const isLast = currentLevel >= LEVELS.length - 1;
     overlayTitleEl.textContent = isLast ? '🏆 Все уровни пройдены!' : '🎉 Уровень пройден!';
-    rewardTextEl.textContent = isLast
-      ? 'Ты собрал все задания! CarCrush покорён! 👑'
-      : level.reward;
+    rewardTextEl.textContent = isLast ? 'Ты собрал все задания! CarCrush покорён! 👑' : level.reward;
     overlayBtnEl.textContent = isLast ? '🔄 Играть заново' : '▶ Следующий уровень';
     overlayBtnEl.onclick = () => {
-      if (isLast) {
-        currentLevel = 0;
-        score = 0;
-        goalProgress = 0;
-        monsterCount = 0;
-        maxComboThisLevel = 0;
-      } else {
-        currentLevel++;
-        goalProgress = 0;
-        monsterCount = 0;
-        maxComboThisLevel = 0;
-      }
+      if (isLast) { currentLevel = 0; score = 0; goalProgress = 0; monsterCount = 0; maxComboThisLevel = 0; }
+      else { currentLevel++; goalProgress = 0; monsterCount = 0; maxComboThisLevel = 0; }
       startLevel();
     };
   } else {
@@ -623,13 +533,7 @@ function completeLevel(won) {
     else if (level.goalType === 'combo') goalText = `Нужен комбо x${level.target}, а был только x${maxComboThisLevel}.`;
     rewardTextEl.textContent = `${goalText} Попробуй ещё! 🔄`;
     overlayBtnEl.textContent = '🔄 Повторить уровень';
-    overlayBtnEl.onclick = () => {
-      goalProgress = 0;
-      monsterCount = 0;
-      maxComboThisLevel = 0;
-      score = 0;
-      startLevel();
-    };
+    overlayBtnEl.onclick = () => { goalProgress = 0; monsterCount = 0; maxComboThisLevel = 0; score = 0; startLevel(); };
   }
 
   finalScoreEl.textContent = score;
@@ -646,7 +550,9 @@ async function activateClickedBonus(row, col) {
   isAnimating = true;
   selectedCell = null;
   hintCells = [];
-  dragState = null;
+  dragStartRow = -1;
+  dragStartCol = -1;
+  isDragging = false;
 
   soundBonus();
 
@@ -660,10 +566,7 @@ async function activateClickedBonus(row, col) {
     delete bonusMeta[key];
     board[r][c] = -1;
   }
-  if (board[row][col] !== -1) {
-    board[row][col] = -1;
-    delete bonusMeta[`${row},${col}`];
-  }
+  if (board[row][col] !== -1) { board[row][col] = -1; delete bonusMeta[`${row},${col}`]; }
 
   score += removedScore;
   if (LEVELS[currentLevel].goalType === 'score') goalProgress = score;
@@ -710,11 +613,7 @@ function animateDrops(drops) {
     function frame(t) {
       const p = Math.min((t - start) / DROP_DURATION, 1);
       const e = 1 - Math.pow(1 - p, 3);
-      const anims = drops.map(d => ({
-        col: d.col, type: d.type,
-        x: d.col * CELL_SIZE + CELL_SIZE / 2,
-        y: (d.fromRow + (d.toRow - d.fromRow) * e) * CELL_SIZE + CELL_SIZE / 2,
-      }));
+      const anims = drops.map(d => ({ col: d.col, type: d.type, x: d.col * CELL_SIZE + CELL_SIZE / 2, y: (d.fromRow + (d.toRow - d.fromRow) * e) * CELL_SIZE + CELL_SIZE / 2 }));
       renderAnimFrame(anims, exclude);
       if (p < 1) requestAnimationFrame(frame); else resolve();
     }
@@ -731,11 +630,7 @@ function animateNewCars(newCars) {
       const p = Math.min((t - start) / FALL_DURATION, 1);
       const c1 = 1.70158, c3 = c1 + 1;
       const e = 1 + c3 * Math.pow(p - 1, 3) + c1 * Math.pow(p - 1, 2);
-      const anims = newCars.map(nc => ({
-        col: nc.col, type: nc.type,
-        x: nc.col * CELL_SIZE + CELL_SIZE / 2,
-        y: (-CELL_SIZE + (nc.targetRow * CELL_SIZE + CELL_SIZE) * e) + CELL_SIZE / 2,
-      }));
+      const anims = newCars.map(nc => ({ col: nc.col, type: nc.type, x: nc.col * CELL_SIZE + CELL_SIZE / 2, y: (-CELL_SIZE + (nc.targetRow * CELL_SIZE + CELL_SIZE) * e) + CELL_SIZE / 2 }));
       renderAnimFrame(anims, exclude);
       if (p < 1) requestAnimationFrame(frame); else resolve();
     }
@@ -773,22 +668,16 @@ function animateBonusEffect(row, col, type) {
       drawGrid();
       for (let r = 0; r < ROWS; r++)
         for (let c = 0; c < COLS; c++)
-          if (board[r][c] !== -1)
-            drawCar(ctx, c * CELL_SIZE + CELL_SIZE / 2, r * CELL_SIZE + CELL_SIZE / 2, board[r][c], CELL_SIZE - 4);
+          if (board[r][c] !== -1) drawCar(ctx, c * CELL_SIZE + CELL_SIZE / 2, r * CELL_SIZE + CELL_SIZE / 2, board[r][c], CELL_SIZE - 4);
       const cx = col * CELL_SIZE + CELL_SIZE / 2;
       const cy = row * CELL_SIZE + CELL_SIZE / 2;
-      const radius = type === PIECE_REDBULL
-        ? CELL_SIZE * 1.5 * p
-        : CELL_SIZE * 2 * Math.max(0, p - 0.2);
+      const radius = type === PIECE_REDBULL ? CELL_SIZE * 1.5 * p : CELL_SIZE * 2 * Math.max(0, p - 0.2);
       if (radius > 5) {
         ctx.save();
         const alpha = type === PIECE_REDBULL ? 1 - p : 1 - Math.max(0, (p - 0.2) / 0.8);
         ctx.globalAlpha = alpha * 0.3;
         ctx.fillStyle = type === PIECE_REDBULL ? '#e74c3c' : '#ffd200';
-        ctx.beginPath();
-        ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
+        ctx.beginPath(); ctx.arc(cx, cy, radius, 0, Math.PI * 2); ctx.fill(); ctx.restore();
       }
       if (p < 1) requestAnimationFrame(frame); else resolve();
     }
@@ -820,7 +709,6 @@ function drawCar(ctx, x, y, type, size) {
     }
     return;
   }
-  // Бонус
   const bonusColors = {
     [PIECE_MONSTER]: { fill: '#00cc44', light: '#66ff99' },
     [PIECE_REDBULL]: { fill: '#cc0000', light: '#ff4444' },
@@ -858,16 +746,6 @@ function render() {
   for (let r = 0; r < ROWS; r++)
     for (let c = 0; c < COLS; c++)
       if (board[r][c] !== -1) drawCar(ctx, c * CELL_SIZE + CELL_SIZE / 2, r * CELL_SIZE + CELL_SIZE / 2, board[r][c], CELL_SIZE - 4);
-  // Draw dragged piece preview
-  if (dragState?.isOverTarget) {
-    const { startRow, startCol, currentRow, currentCol } = dragState;
-    const type = board[startRow][startCol];
-    if (type !== undefined && type !== -1) {
-      const x = currentCol * CELL_SIZE + CELL_SIZE / 2;
-      const y = currentRow * CELL_SIZE + CELL_SIZE / 2;
-      drawCar(ctx, x, y, type, CELL_SIZE - 4);
-    }
-  }
 }
 
 function renderEmptyCells() {
@@ -967,15 +845,12 @@ function updateProgress() {
   const level = LEVELS[currentLevel];
   const pct = Math.min(100, (goalProgress / level.target) * 100);
   progressFillEl.style.width = pct + '%';
-
   if (level.goalType === 'brand') progressTextEl.textContent = `${goalProgress} / ${level.target} ${level.brandName}`;
   else if (level.goalType === 'score') progressTextEl.textContent = `${goalProgress} / ${level.target} очков`;
   else if (level.goalType === 'monster') progressTextEl.textContent = `${goalProgress} / ${level.target} шт`;
   else if (level.goalType === 'combo') progressTextEl.textContent = `x${goalProgress} / x${level.target}`;
-
   const movesLeft = level.movesLimit - moves;
   movesEl.textContent = `${moves} / ${level.movesLimit}`;
-
   if (movesLeft <= 5) movesEl.style.color = '#ff6464';
   else movesEl.style.color = '';
 }
@@ -983,245 +858,12 @@ function updateProgress() {
 function updateLegend() {
   const legend = document.getElementById('gameLegend');
   if (!legend) return;
-  legend.innerHTML = carTypes.map(t =>
-    `<div class="legend-item"><img src="${t.svg}" alt="${t.name}" class="legend-svg"> ${t.name}</div>`
-  ).join('') +
+  legend.innerHTML = carTypes.map(t => `<div class="legend-item"><img src="${t.svg}" alt="${t.name}" class="legend-svg"> ${t.name}</div>`).join('') +
     `<div class="legend-item"><img src="bonus/monster-graffio.svg" alt="Monster Grafio" class="legend-svg bonus-legend"> Monster Grafio</div>` +
     `<div class="legend-item"><img src="bonus/red-bull-logo.svg" alt="Red Bull" class="legend-svg bonus-legend"> Red Bull</div>`;
 }
 
-// ─── ВЗАИМОДЕЙСТВИЕ МЫШЬ И ПАЛЬЦА ──────────────────────
-// Функция получения координат клетки с(canvas)
-function canvasToBoard(canvasX, canvasY) {
-  const rect = canvas.getBoundingClientRect();
-  const scaleX = canvas.width / rect.width;
-  const scaleY = canvas.height / rect.height;
-  const x = (canvasX - rect.left) * scaleX;
-  const y = (canvasY - rect.top) * scaleY;
-  const col = Math.floor(x / CELL_SIZE);
-  const row = Math.floor(y / CELL_SIZE);
-  return { row, col, px: x, py: y };
-}
-
-// Обработка событий указателя (мышь + касание)
-function getCellFromEvent(e) {
-  const touches = e.touches || [e];
-  const t = touches[0];
-  return canvasToBoard(t.clientX, t.clientY);
-}
-
-// State for drag
-let dragStartRow = -1;
-let dragStartCol = -1;
-let dragCurrentRow = -1;
-let dragCurrentCol = -1;
-let isDragging = false;
-
-// События мыши
-canvas.addEventListener('mousedown', (e) => {
-  if (isAnimating || gameOver) return;
-  if (audioUnlocked === false) { initAudio(); audioUnlocked = true; }
-
-  const { row, col } = getCellFromEvent(e);
-  if (row < 0 || row >= ROWS || col < 0 || col >= COLS) return;
-
-  // Проверка на бонус
-  if (board[row][col] === PIECE_MONSTER || board[row][col] === PIECE_REDBULL) {
-    activateClickedBonus(row, col);
-    return;
-  }
-
-  // Начало перетаскивания
-  dragStartRow = row;
-  dragStartCol = col;
-  dragCurrentRow = row;
-  dragCurrentCol = col;
-  isDragging = false;
-  selectedCell = { row, col };
-  hintCells = [];
-  soundSelect();
-  render();
-  e.preventDefault();
-});
-
-canvas.addEventListener('mousemove', (e) => {
-  if (!isDragging || isAnimating || gameOver) return;
-  const { row, col } = getCellFromEvent(e);
-
-  if (row < 0 || row >= ROWS || col < 0 || col >= COLS) return;
-
-  // Проверяем, было ли suficiente сдвига
-  const dx = col - dragStartCol;
-  const dy = row - dragStartRow;
-
-  if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
-    isDragging = true;
-  }
-
-  if (isDragging) {
-    dragCurrentRow = row;
-    dragCurrentCol = col;
-    render();
-  }
-  e.preventDefault();
-});
-
-canvas.addEventListener('mouseup', (e) => {
-  if (!isDragging || isAnimating || gameOver) return;
-
-  const target = getCellFromEvent(e);
-  if (!target) { render(); return; }
-
-  const targetRow = target.row;
-  const targetCol = target.col;
-
-  // Сброс состояния drag
-  isDragging = false;
-  dragState = null; // cleanup
-  selectedCell = null;
-  hintCells = [];
-  render();
-
-  // Проверяем, был ли сдвиг на соседа
-  const dr = Math.abs(dragStartRow - targetRow);
-  const dc = Math.abs(dragStartCol - targetCol);
-
-  if ((dr === 1 && dc === 0) || (dr === 0 && dc === 1)) {
-    // Соседний клик — делаем ход
-    makeMove(dragStartRow, dragStartCol, targetRow, targetCol);
-  } else if (dr === 0 && dc === 0) {
-    // Клик на ту же клетку — просто снимаем выделение (уже сбросили selectedCell выше)
-  } else {
-    // Слишком большой сдвиг — игнорируем
-  }
-});
-
-// События касания (touch)
-canvas.addEventListener('touchstart', (e) => {
-  e.preventDefault(); // Предотвращаем скролл страницы
-  if (isAnimating || gameOver) return;
-  if (audioUnlocked === false) { initAudio(); audioUnlocked = true; }
-
-  const { row, col } = getCellFromEvent(e);
-  if (row < 0 || row >= ROWS || col < 0 || col >= COLS) return;
-
-  // Проверка на бонус
-  if (board[row][col] === PIECE_MONSTER || board[row][col] === PIECE_REDBULL) {
-    activateClickedBonus(row, col);
-    return;
-  }
-
-  // Начало перетаскивания
-  dragStartRow = row;
-  dragStartCol = col;
-  dragCurrentRow = row;
-  dragCurrentCol = col;
-  isDragging = false;
-  selectedCell = { row, col };
-  hintCells = [];
-  soundSelect();
-  render();
-}, { passive: false });
-
-canvas.addEventListener('touchmove', (e) => {
-  e.preventDefault();
-  if (!isDragging || isAnimating || gameOver) return;
-
-  const { row, col } = getCellFromEvent(e);
-  if (row < 0 || row >= ROWS || col < 0 || col >= COLS) return;
-
-  const dx = col - dragStartCol;
-  const dy = row - dragStartRow;
-
-  if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
-    isDragging = true;
-  }
-
-  if (isDragging) {
-    dragCurrentRow = row;
-    dragCurrentCol = col;
-    render();
-  }
-}, { passive: false });
-
-canvas.addEventListener('touchend', (e) => {
-  if (!isDragging || isAnimating || gameOver) return;
-
-  const target = getCellFromEvent(e);
-  if (!target) { render(); return; }
-
-  isDragging = false;
-
-  const targetRow = target.row;
-  const targetCol = target.col;
-
-  // Сброс состояния
-  dragStartRow = -1;
-  dragStartCol = -1;
-  dragCurrentRow = -1;
-  dragCurrentCol = -1;
-
-  // Проверяем, был ли сдвиг на соседа
-  const dr = Math.abs(dragStartRow - targetRow);
-  const dc = Math.abs(dragStartCol - targetCol);
-
-  if ((dr === 1 && dc === 0) || (dr === 0 && dc === 1)) {
-    makeMove(dragStartRow, dragStartCol, targetRow, targetCol);
-  } else if (dr === 0 && dc === 0) {
-    // Клик на ту же клетку
-    selectedCell = null;
-  } else {
-    // Слишком большой сдвиг — игнорируем
-  }
-  render();
-});
-
-// ─── КНОПКИ ──────────────────────────────────────────────
-document.getElementById('resetBtn')?.addEventListener('click', () => {
-  if (isAnimating) return;
-  currentLevel = 0;
-  score = 0;
-  goalProgress = 0;
-  monsterCount = 0;
-  maxComboThisLevel = 0;
-  startLevel();
-});
-
-document.getElementById('hintBtn')?.addEventListener('click', () => {
-  if (isAnimating || gameOver) return;
-  const move = findValidMove();
-  if (move) {
-    hintCells = move;
-    selectedCell = null;
-    render();
-    setTimeout(() => { hintCells = []; render(); }, 2000);
-  }
-});
-
-document.getElementById('shuffleBtn')?.addEventListener('click', async () => {
-  if (isAnimating || gameOver) return;
-  isAnimating = true;
-  selectedCell = null;
-  hintCells = [];
-  dragState = null;
-  shuffleBoard();
-  render();
-  await delay(200);
-  await processMatches();
-  combo = 1; comboEl.textContent = 'x1';
-  isAnimating = false;
-});
-
-// ─── ЗАПУСК ──────────────────────────────────────────────
-async function startGame() {
-  currentLevel = 0;
-  score = 0;
-  goalProgress = 0;
-  monsterCount = 0;
-  maxComboThisLevel = 0;
-  await startLevel();
-}
-
+// ─── СТАРТ УРОВНЯ ────────────────────────────────────────
 async function startLevel() {
   const level = LEVELS[currentLevel];
   moves = 0;
@@ -1230,7 +872,9 @@ async function startLevel() {
   hintCells = [];
   isAnimating = false;
   gameOver = false;
-  dragState = null;
+  dragStartRow = -1;
+  dragStartCol = -1;
+  isDragging = false;
   overlayEl.classList.remove('active');
 
   levelNumEl.textContent = level.num;
@@ -1263,6 +907,200 @@ async function startLevel() {
   render();
 }
 
+async function startGame() {
+  currentLevel = 0;
+  score = 0;
+  goalProgress = 0;
+  monsterCount = 0;
+  maxComboThisLevel = 0;
+  await startLevel();
+}
+
+// ─── ВЗАИМОДЕЙСТВИЕ МЫШЬ И ПАЛЬЦА ──────────────────────
+
+function canvasToBoard(canvasX, canvasY) {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  const x = (canvasX - rect.left) * scaleX;
+  const y = (canvasY - rect.top) * scaleY;
+  const col = Math.floor(x / CELL_SIZE);
+  const row = Math.floor(y / CELL_SIZE);
+  return { row, col, px: x, py: y };
+}
+
+function getCellFromEvent(e) {
+  const touches = e.touches || [e];
+  const t = touches[0];
+  return canvasToBoard(t.clientX, t.clientY);
+}
+
+// Mouse events
+canvas.addEventListener('mousedown', (e) => {
+  if (isAnimating || gameOver) return;
+  if (audioUnlocked === false) { initAudio(); audioUnlocked = true; }
+  const { row, col } = getCellFromEvent(e);
+  if (row < 0 || row >= ROWS || col < 0 || col >= COLS) return;
+  if (board[row][col] === PIECE_MONSTER || board[row][col] === PIECE_REDBULL) {
+    activateClickedBonus(row, col);
+    return;
+  }
+  dragStartRow = row;
+  dragStartCol = col;
+  isDragging = false;
+  selectedCell = { row, col };
+  hintCells = [];
+  soundSelect();
+  render();
+  e.preventDefault();
+});
+
+canvas.addEventListener('mousemove', (e) => {
+  if (!isDragging || isAnimating || gameOver) return;
+  const { row, col } = getCellFromEvent(e);
+  if (row < 0 || row >= ROWS || col < 0 || col >= COLS) return;
+  const dx = col - dragStartCol;
+  const dy = row - dragStartRow;
+  if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
+    isDragging = true;
+  }
+  if (isDragging) render();
+  e.preventDefault();
+});
+
+canvas.addEventListener('mouseup', (e) => {
+  if (!isDragging || isAnimating || gameOver) {
+    // Simple click without drag - toggle selection
+    if (e.type === 'mouseup') {
+      const { row, col } = getCellFromEvent(e);
+      if (row >= 0 && row < ROWS && col >= 0 && col < COLS && board[row][col] !== PIECE_MONSTER && board[row][col] !== PIECE_REDBULL) {
+        if (selectedCell && selectedCell.row === row && selectedCell.col === col) {
+          selectedCell = null;
+        } else if (selectedCell) {
+          const dr = Math.abs(selectedCell.row - row);
+          const dc = Math.abs(selectedCell.col - col);
+          if ((dr === 1 && dc === 0) || (dr === 0 && dc === 1)) {
+            makeMove(selectedCell.row, selectedCell.col, row, col);
+          } else {
+            selectedCell = { row, col };
+          }
+        } else {
+          selectedCell = { row, col };
+        }
+        render();
+      }
+    }
+    return;
+  }
+
+  const target = getCellFromEvent(e);
+  if (!target) { render(); return; }
+  const targetRow = target.row;
+  const targetCol = target.col;
+
+  isDragging = false;
+  dragStartRow = -1;
+  dragStartCol = -1;
+
+  const dr = Math.abs(dragStartRow - targetRow);
+  const dc = Math.abs(dragStartCol - targetCol);
+
+  if ((dr === 1 && dc === 0) || (dr === 0 && dc === 1)) {
+    makeMove(dragStartRow, dragStartCol, targetRow, targetCol);
+  } else {
+    render();
+  }
+});
+
+// Touch events
+canvas.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  if (isAnimating || gameOver) return;
+  if (audioUnlocked === false) { initAudio(); audioUnlocked = true; }
+  const { row, col } = getCellFromEvent(e);
+  if (row < 0 || row >= ROWS || col < 0 || col >= COLS) return;
+  if (board[row][col] === PIECE_MONSTER || board[row][col] === PIECE_REDBULL) {
+    activateClickedBonus(row, col);
+    return;
+  }
+  dragStartRow = row;
+  dragStartCol = col;
+  isDragging = false;
+  selectedCell = { row, col };
+  hintCells = [];
+  soundSelect();
+  render();
+}, { passive: false });
+
+canvas.addEventListener('touchmove', (e) => {
+  e.preventDefault();
+  if (!isDragging || isAnimating || gameOver) return;
+  const { row, col } = getCellFromEvent(e);
+  if (row < 0 || row >= ROWS || col < 0 || col >= COLS) return;
+  const dx = col - dragStartCol;
+  const dy = row - dragStartRow;
+  if (Math.abs(dx) > 10 || Math.abs(dy) > 10) { isDragging = true; }
+  if (isDragging) render();
+}, { passive: false });
+
+canvas.addEventListener('touchend', (e) => {
+  e.preventDefault();
+  if (!isDragging || isAnimating || gameOver) return;
+  const target = getCellFromEvent(e);
+  if (!target) { render(); return; }
+  const targetRow = target.row;
+  const targetCol = target.col;
+  isDragging = false;
+  dragStartRow = -1;
+  dragStartCol = -1;
+  const dr = Math.abs(dragStartRow - targetRow);
+  const dc = Math.abs(dragStartCol - targetCol);
+  if ((dr === 1 && dc === 0) || (dr === 0 && dc === 1)) {
+    makeMove(dragStartRow, dragStartCol, targetRow, targetCol);
+  } else {
+    render();
+  }
+}, { passive: false });
+
+// ─── КНОПКИ ──────────────────────────────────────────────
+document.getElementById('resetBtn')?.addEventListener('click', () => {
+  if (isAnimating) return;
+  currentLevel = 0;
+  score = 0;
+  goalProgress = 0;
+  monsterCount = 0;
+  maxComboThisLevel = 0;
+  startLevel();
+});
+
+document.getElementById('hintBtn')?.addEventListener('click', () => {
+  if (isAnimating || gameOver) return;
+  const move = findValidMove();
+  if (move) {
+    hintCells = move;
+    selectedCell = null;
+    render();
+    setTimeout(() => { hintCells = []; render(); }, 2000);
+  }
+});
+
+document.getElementById('shuffleBtn')?.addEventListener('click', async () => {
+  if (isAnimating || gameOver) return;
+  isAnimating = true;
+  selectedCell = null;
+  hintCells = [];
+  dragStartRow = -1;
+  dragStartCol = -1;
+  isDragging = false;
+  shuffleBoard();
+  render();
+  await delay(200);
+  await processMatches();
+  combo = 1; comboEl.textContent = 'x1';
+  isAnimating = false;
+});
+
+// ─── ЗАПУСК ──────────────────────────────────────────────
 async function init() {
   await preloadAllSVGs();
   updateLegend();
