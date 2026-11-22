@@ -714,9 +714,7 @@ function drawCar(ctx, x, y, type, size) {
     [PIECE_REDBULL]: { fill: '#cc0000', light: '#ff4444' },
   };
   const bc = bonusColors[type] || { fill: '#888', light: '#bbb' };
-  const glow = Math.sin(Date.now() / 200) * 0.3 + 0.7;
   ctx.save();
-  ctx.shadowColor = bc.light; ctx.shadowBlur = 12 + glow * 6;
   const grad = ctx.createRadialGradient(x - 4, y - 4, 2, x, y, size / 2);
   grad.addColorStop(0, bc.light); grad.addColorStop(1, bc.fill);
   ctx.beginPath(); ctx.arc(x, y, size / 2 - 1, 0, Math.PI * 2);
@@ -825,10 +823,7 @@ function renderAnimFrame(anims, excludePositions) {
       drawCar(ctx, c * CELL_SIZE + CELL_SIZE / 2, r * CELL_SIZE + CELL_SIZE / 2, board[r][c], CELL_SIZE - 4);
     }
   for (const a of anims) {
-    ctx.save();
-    ctx.shadowColor = 'rgba(0,0,0,0.35)'; ctx.shadowBlur = 8; ctx.shadowOffsetY = 4;
     drawCar(ctx, a.x, a.y, a.type, CELL_SIZE - 4);
-    ctx.restore();
   }
 }
 
@@ -937,7 +932,6 @@ function getCellFromEvent(e) {
 
 // Unified interaction — works with mouse, touch, and laptop touchscreens
 let lastTouchTime = 0;
-let touchSelectRendered = false;
 
 function handleStart(e, isTouch) {
   if (isAnimating || gameOver) return;
@@ -955,7 +949,6 @@ function handleStart(e, isTouch) {
   dragStartRow = row;
   dragStartCol = col;
   isDragging = false;
-  touchSelectRendered = false;
 
   // On touch: select IMMEDIATELY for instant feedback
   if (isTouch) {
@@ -963,7 +956,6 @@ function handleStart(e, isTouch) {
     hintCells = [];
     soundSelect();
     render();
-    touchSelectRendered = true;
     e.preventDefault();
   }
 }
@@ -980,8 +972,6 @@ function handleMove(e, isTouch) {
   const dy = Math.abs(row - dragStartRow);
   if (dx > 10 || dy > 10) {
     isDragging = true;
-    // Don't re-render on every move frame to avoid flicker
-    render();
   }
 }
 
@@ -1014,51 +1004,27 @@ function handleEnd(e, isTouch) {
     }
   } else {
     // Simple tap — select or swap
-    // For touch, cell is already selected from handleStart, so just check swap
-    if (isTouch && touchSelectRendered) {
-      const cellType = board[row][col];
-      if (cellType === PIECE_MONSTER || cellType === PIECE_REDBULL) {
-        activateClickedBonus(row, col);
-        return;
-      }
-      if (selectedCell && selectedCell.row === row && selectedCell.col === col) {
-        // Same cell tapped again — deselect
-        selectedCell = null;
-      } else if (selectedCell) {
-        const dr = Math.abs(selectedCell.row - row);
-        const dc = Math.abs(selectedCell.col - col);
-        if ((dr === 1 && dc === 0) || (dr === 0 && dc === 1)) {
-          makeMove(selectedCell.row, selectedCell.col, row, col);
-        } else {
-          selectedCell = { row, col };
-        }
-      }
-      soundSelect();
-      render();
-      touchSelectRendered = false;
-    } else {
-      // Mouse click path
-      const cellType = board[row][col];
-      if (cellType === PIECE_MONSTER || cellType === PIECE_REDBULL) {
-        activateClickedBonus(row, col);
-        return;
-      }
-      if (selectedCell && selectedCell.row === row && selectedCell.col === col) {
-        selectedCell = null;
-      } else if (selectedCell) {
-        const dr = Math.abs(selectedCell.row - row);
-        const dc = Math.abs(selectedCell.col - col);
-        if ((dr === 1 && dc === 0) || (dr === 0 && dc === 1)) {
-          makeMove(selectedCell.row, selectedCell.col, row, col);
-        } else {
-          selectedCell = { row, col };
-        }
+    const cellType = board[row][col];
+    if (cellType === PIECE_MONSTER || cellType === PIECE_REDBULL) {
+      activateClickedBonus(row, col);
+      return;
+    }
+    if (selectedCell && selectedCell.row === row && selectedCell.col === col) {
+      // Same cell tapped again — deselect
+      selectedCell = null;
+    } else if (selectedCell) {
+      const dr = Math.abs(selectedCell.row - row);
+      const dc = Math.abs(selectedCell.col - col);
+      if ((dr === 1 && dc === 0) || (dr === 0 && dc === 1)) {
+        makeMove(selectedCell.row, selectedCell.col, row, col);
       } else {
         selectedCell = { row, col };
       }
-      soundSelect();
-      render();
+    } else {
+      selectedCell = { row, col };
     }
+    soundSelect();
+    render();
   }
 }
 
