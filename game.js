@@ -1213,6 +1213,56 @@ document.getElementById('shuffleBtn')?.addEventListener('click', async () => {
 });
 
 // ─── ЗАПУСК ──────────────────────────────────────────────
+async function startGame() {
+  currentLevel = 0;
+  score = 0;
+  goalProgress = 0;
+  monsterCount = 0;
+  maxComboThisLevel = 0;
+  await startLevel();
+}
+
+async function startLevel() {
+  const level = LEVELS[currentLevel];
+  moves = 0;
+  combo = 1;
+  selectedCell = null;
+  hintCells = [];
+  isAnimating = false;
+  gameOver = false;
+  dragState = null;
+  overlayEl.classList.remove('active');
+
+  levelNumEl.textContent = level.num;
+  goalLabelEl.textContent = 'задание:';
+
+  if (level.goalType === 'brand') {
+    goalIconEl.src = carTypes[level.brandIndex].svg;
+    goalIconEl.alt = level.brandName;
+    goalNameEl.textContent = `собрать ${level.target} ${level.brandName}`;
+  } else if (level.goalType === 'score') {
+    goalIconEl.src = 'bonus/red-bull-logo.svg';
+    goalIconEl.alt = 'очки';
+    goalNameEl.textContent = `набрать ${level.goalName}`;
+  } else if (level.goalType === 'monster') {
+    goalIconEl.src = 'bonus/monster-graffio.svg';
+    goalIconEl.alt = 'Monster';
+    goalNameEl.textContent = `получить ${level.target} ${level.goalName}`;
+  } else if (level.goalType === 'combo') {
+    goalIconEl.src = carTypes[2].svg;
+    goalIconEl.alt = 'комбо';
+    goalNameEl.textContent = level.goalName;
+  }
+
+  fillBoard();
+  let attempts = 0;
+  while (!hasValidMove() && attempts < 100) { shuffleBoard(); attempts++; }
+
+  updateStats();
+  updateProgress();
+  render();
+}
+
 async function init() {
   await preloadAllSVGs();
   updateLegend();
