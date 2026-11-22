@@ -1039,10 +1039,6 @@ canvas.addEventListener('mousemove', (e) => {
   if (row < 0 || row >= ROWS || col < 0 || col >= COLS) return;
 
   // Проверяем, было ли suficiente сдвига
-  const dx = Math.abs(row - dragStartCol);  // column difference
-  const dy = Math.abs(col - dragStartRow);  // row difference - wait this is wrong
-
-  // Actually let me use proper coordinates
   const dx = col - dragStartCol;
   const dy = row - dragStartRow;
 
